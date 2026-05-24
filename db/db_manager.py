@@ -249,11 +249,11 @@ class DBManager:
 db_manager = DBManager()
 
 async def init_db(Base):
-    """Initialize database: create schema and all tables if they don't exist."""
+    """Create schemas and all tables defined in db.models."""
     async with engine.begin() as conn:
-        # Create schema if it doesn't exist
+        await conn.execute(text("CREATE SCHEMA IF NOT EXISTS users"))
         await conn.execute(text("CREATE SCHEMA IF NOT EXISTS annual_declarations"))
-        # Create all tables based on Base metadata
         await conn.run_sync(Base.metadata.create_all)
-        # Set search path for the session
-        await conn.execute(text("SET search_path TO annual_declarations, public;"))
+        await conn.execute(
+            text("SET search_path TO annual_declarations, users, public;")
+        )

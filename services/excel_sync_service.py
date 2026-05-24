@@ -1,0 +1,165 @@
+import asyncio
+from io import BytesIO
+from uuid import UUID
+
+from openpyxl import load_workbook
+from sqlalchemy import select, and_
+
+from db.db_manager import get_session
+from db.models import AnnualDeclaration, UserDeclarationStatus, SyncStatus
+from services.excel_service import _header_index_map, _parse_yes_no, parse_excel_counts
+from storage.storage_ops import download_to_stream
+
+BATCH_SIZE = 500
+
+
+def _iter_excel_rows(file_bytes: bytes):
+    wb = load_workbook(BytesIO(file_bytes), read_only=True, data_only=True)
+    ws = wb.active
+    rows = ws.iter_rows(values_only=True)
+    header = next(rows, None)
+    if not header:
+        wb.close()
+        return {}, []
+
+    col_map = _header_index_map(header)
+    data_rows = [row for row in rows if row and any(row)]
+    wb.close()
+    return col_map, data_rows
+
+
+def _is_pending_row(row, status_col: int | None) -> bool:
+    if status_col is None:
+        return True
+    return str(row[status_col] or "").strip().lower() != "completed"
+
+
+async def _set_sync_status(declaration_id: UUID, sync_status: SyncStatus) -> None:
+    async with get_session() as session:
+        declaration = await session.get(AnnualDeclaration, declaration_id)
+        if declaration:
+            declaration.sync_status = sync_status
+            await session.commit()
+
+
+async def _process_declaration(declaration_id: UUID, file_path: str) -> dict:
+    file_stream = await download_to_stream(file_path)
+    file_bytes = file_stream.read()
+    col_map, data_rows = await asyncio.to_thread(_iter_excel_rows, file_bytes)
+
+    staff_col = col_map.get("Staff ID")
+    notify_col = col_map.get("Notify")
+    status_col = col_map.get("Status")
+
+    if staff_col is None:
+        raise ValueError("Excel must contain a 'Staff ID' column")
+
+    pending_rows = [row for row in data_rows if _is_pending_row(row, status_col)]
+    processed = 0
+
+    for batch_start in range(0, len(pending_rows), BATCH_SIZE):
+        batch = pending_rows[batch_start : batch_start + BATCH_SIZE]
+
+        async with get_session() as session:
+            for row in batch:
+                staff_id = row[staff_col]
+                if not staff_id:
+                    continue
+
+                notify_val = True
+                if notify_col is not None:
+                    notify_val = _parse_yes_no(row[notify_col])
+
+                existing = (
+                    await session.execute(
+                        select(UserDeclarationStatus).where(
+                            and_(
+                                UserDeclarationStatus.declaration_id == declaration_id,
+                                UserDeclarationStatus.staff_id == str(staff_id),
+                            )
+                        )
+                    )
+                ).scalar_one_or_none()
+
+                if existing:
+                    existing.notify = notify_val
+                else:
+                    session.add(
+                        UserDeclarationStatus(
+                            declaration_id=declaration_id,
+                            staff_id=str(staff_id),
+                            status="not_started",
+                            notify=notify_val,
+                        )
+                    )
+
+                processed += 1
+
+            await session.commit()
+
+    pending, total, excel_pending_status = await asyncio.to_thread(
+        parse_excel_counts, file_bytes
+    )
+
+    async with get_session() as session:
+        declaration = await session.get(AnnualDeclaration, declaration_id)
+        declaration.pending_count = pending
+        declaration.total_count = total
+        declaration.excel_pending_status = excel_pending_status
+        declaration.sync_status = SyncStatus.COMPLETED
+        await session.commit()
+
+    return {
+        "declaration_id": str(declaration_id),
+        "sync_status": SyncStatus.COMPLETED.value,
+        "processed": processed,
+        "pending_count": pending,
+        "total_count": total,
+        "excel_pending_status": excel_pending_status,
+    }
+
+
+async def sync_pending_declarations() -> dict:
+    """Process declarations where sync_status is PENDING and a file is uploaded."""
+
+    async with get_session() as session:
+        declarations = (
+            await session.execute(
+                select(AnnualDeclaration).where(
+                    and_(
+                        AnnualDeclaration.sync_status == SyncStatus.PENDING,
+                        AnnualDeclaration.file_path.isnot(None),
+                    )
+                )
+            )
+        ).scalars().all()
+
+    if not declarations:
+        return {
+            "message": "No declarations with sync_status PENDING to process",
+            "items": [],
+            "errors": [],
+        }
+
+    results = []
+    errors = []
+
+    for decl in declarations:
+        try:
+            result = await _process_declaration(decl.id, decl.file_path)
+            results.append(result)
+        except Exception as exc:
+            await _set_sync_status(decl.id, SyncStatus.FAILED)
+            errors.append({
+                "declaration_id": str(decl.id),
+                "sync_status": SyncStatus.FAILED.value,
+                "error": str(exc),
+            })
+
+    return {
+        "message": "Sync completed",
+        "synced": len(results),
+        "failed": len(errors),
+        "items": results,
+        "errors": errors,
+    }
