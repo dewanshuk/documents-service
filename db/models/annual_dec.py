@@ -4,8 +4,15 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import (
-    String, Date, DateTime, Text, Boolean, Integer,
-    ForeignKey, UniqueConstraint, Enum,
+    String,
+    Date,
+    DateTime,
+    Text,
+    Boolean,
+    Integer,
+    ForeignKey,
+    UniqueConstraint,
+    Enum,
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import DeclarativeBase, mapped_column, relationship
@@ -17,8 +24,6 @@ class Base(DeclarativeBase):
     pass
 
 
-
-
 class DeclarationType(enum.Enum):
     COBCE_COI = "COBCE/COI"
     R5_18 = "R5.18"
@@ -26,11 +31,10 @@ class DeclarationType(enum.Enum):
 
 class SyncStatus(enum.Enum):
     """NULL = no file uploaded | PENDING | COMPLETED | FAILED"""
+
     PENDING = "PENDING"
     FAILED = "FAILED"
     COMPLETED = "COMPLETED"
-
-
 
 
 class User(Base):
@@ -45,8 +49,6 @@ class User(Base):
     is_master_admin = mapped_column(Boolean, nullable=False, default=False)
     is_knowledge_hub_admin = mapped_column(Boolean, nullable=False, default=False)
     is_policy_hub_admin = mapped_column(Boolean, nullable=False, default=False)
-
-
 
 
 class AnnualDeclaration(Base):
@@ -89,6 +91,7 @@ class AnnualDeclaration(Base):
             name="sync_status_enum",
             schema="annual_declarations",
             values_callable=lambda obj: [e.value for e in obj],
+            native_enum=False,
         ),
         nullable=True,
     )

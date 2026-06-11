@@ -58,14 +58,14 @@ async def create_declaration(
 @router.get("/list-declarations")
 async def list_declarations_endpoint(
     filters: AnnualDeclarationFilters = Depends(),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(25, ge=1, le=100),
     current_user: dict = Depends(get_current_user),
 ):
-    """List declarations with filters. Admin: all with stats. User: active + own status."""
-    data = await list_declarations(
-        current_user.get("is_master_admin", False),
-        current_user["staff_id"],
-        filters,
-    )
+    if not current_user.get("is_master_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    data = await list_declarations(filters, page, page_size)
     return JSONResponse(content=data, status_code=200)
 
 

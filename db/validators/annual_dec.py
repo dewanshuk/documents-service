@@ -2,7 +2,7 @@ from datetime import date, datetime
 from typing import Literal, Optional
 from pydantic import BaseModel, Field
 from uuid import UUID
-from db.models import DeclarationType
+from db.models.annual_dec import DeclarationType
 
 
 class AnnualDeclarationCreate(BaseModel):
@@ -36,5 +36,6 @@ class QuestionResponsePayload(BaseModel):
 
 class SaveDeclarationRequest(BaseModel):
     """Unified save: draft allows partial answers; submit requires all mandatory fields."""
+
     status: Literal["draft", "submit"]
     responses: list[QuestionResponsePayload] = Field(default_factory=list)

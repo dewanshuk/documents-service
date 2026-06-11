@@ -2,7 +2,7 @@ from datetime import date, datetime
 from enum import Enum
 from uuid import UUID
 
-from sqlalchemy import select, func, and_, case, cast, String
+from sqlalchemy import select, and_, cast, String, func
 from sqlalchemy.orm import selectinload
 
 from db.db_manager import get_session
@@ -14,7 +14,7 @@ from db.models import (
     IST,
 )
 from db.validators import AnnualDeclarationFilters
-from app.constants.question_config import (
+from api.routes.annual_dec.question_config import (
     CONFLICT_RESPONSES,
     validate_submission_responses,
 )
@@ -169,122 +169,48 @@ def _apply_declaration_filters(stmt, filters: AnnualDeclarationFilters):
 
 
 async def list_declarations(
-    is_master_admin: bool,
-    staff_id: str,
     filters: AnnualDeclarationFilters,
+    page: int = 1,
+    page_size: int = 25,
 ) -> dict:
-    """List declarations with optional filters.
-    Admin: org-wide stats per declaration. User: own progress only."""
+    """Admin-only: list declarations with optional filters and pagination."""
     async with get_session() as session:
-        decl_stmt = select(AnnualDeclaration).order_by(
-            AnnualDeclaration.financial_year.desc()
+        decl_stmt = select(AnnualDeclaration)
+        decl_stmt = _apply_declaration_filters(decl_stmt, filters)
+
+        total = await session.scalar(
+            select(func.count()).select_from(decl_stmt.subquery())
         )
 
-        if not is_master_admin:
-            decl_stmt = decl_stmt.where(AnnualDeclaration.assigned_date <= date.today())
-
-        decl_stmt = _apply_declaration_filters(decl_stmt, filters)
+        offset = (page - 1) * page_size
+        decl_stmt = (
+            decl_stmt.order_by(AnnualDeclaration.last_updated_at.desc())
+            .limit(page_size)
+            .offset(offset)
+        )
         declarations = (await session.execute(decl_stmt)).scalars().all()
 
-        if is_master_admin:
-            total_users = await session.scalar(
-                select(func.count()).select_from(User).where(
-                    func.lower(User.status) == "active"
-                )
-            ) or 0
-
-            items = []
-            for decl in declarations:
-                stats_row = (
-                    await session.execute(
-                        select(
-                            func.count(
-                                case((UserDeclarationStatus.status == "completed", 1))
-                            ).label("completed"),
-                            func.count(
-                                case((UserDeclarationStatus.status == "draft", 1))
-                            ).label("draft"),
-                            func.count(
-                                case(
-                                    (
-                                        and_(
-                                            UserDeclarationStatus.has_conflicts.is_(True),
-                                            UserDeclarationStatus.status == "completed",
-                                        ),
-                                        1,
-                                    )
-                                )
-                            ).label("conflicts"),
-                        ).where(
-                            UserDeclarationStatus.declaration_id == decl.id
-                        )
-                    )
-                ).one()
-
-                completed = stats_row.completed or 0
-                draft = stats_row.draft or 0
-
-                items.append({
-                    "declaration_id": str(decl.id),
-                    "declaration_name": decl.declaration_name.value,
-                    "financial_year": decl.financial_year,
-                    "assigned_date": decl.assigned_date.isoformat(),
-                    "due_date": decl.due_date.isoformat(),
-                    "activity_closure_date": decl.activity_closure_date.isoformat(),
-                    "total_users": total_users,
-                    "completed": completed,
-                    "in_progress": draft,
-                    "pending": total_users - completed - draft,
-                    "with_conflicts": stats_row.conflicts or 0,
-                    "pending_count": decl.pending_count,
-                    "total_count": decl.total_count,
-                    "excel_pending_status": decl.excel_pending_status,
-                    "sync_status": (
-                        decl.sync_status.value if decl.sync_status else None
-                    ),
-                })
-
-            return {"role": "admin", "items": items}
-
-        items = []
-        for decl in declarations:
-            user_status = (
-                await session.execute(
-                    select(UserDeclarationStatus).where(
-                        and_(
-                            UserDeclarationStatus.declaration_id == decl.id,
-                            UserDeclarationStatus.staff_id == staff_id,
-                        )
-                    )
-                )
-            ).scalar_one_or_none()
-
-            items.append({
+        items = [
+            {
                 "declaration_id": str(decl.id),
                 "declaration_name": decl.declaration_name.value,
                 "financial_year": decl.financial_year,
                 "assigned_date": decl.assigned_date.isoformat(),
                 "due_date": decl.due_date.isoformat(),
                 "activity_closure_date": decl.activity_closure_date.isoformat(),
-                "user_status": (
-                    user_status.status
-                    if user_status and user_status.status != "not_started"
-                    else "not_started"
-                ),
-                "has_conflicts": user_status.has_conflicts if user_status else False,
-                "submitted_at": (
-                    user_status.submitted_at.isoformat()
-                    if user_status and user_status.submitted_at
-                    else None
-                ),
-                "last_saved_at": (
-                    user_status.last_saved_at.isoformat()
-                    if user_status and user_status.last_saved_at
-                    else None
-                ),
-            })
+                "status": decl.status,
+                "pending_count": decl.pending_count,
+                "total_count": decl.total_count,
+            }
+            for decl in declarations
+        ]
 
-        return {"role": "user", "items": items}
+        return {
+            "items": items,
+            "total": total or 0,
+            "page": page,
+            "page_size": page_size,
+        }
 
 
 async def get_declaration_user_responses(

@@ -1,3 +1,4 @@
+
 fastapi>=0.118.3
 starlette>=0.46.0
 sqlalchemy>=2.0.41
@@ -18,3 +19,5 @@ azure-keyvault-certificates>=4.10.0
 azure-storage-blob>=12.28.0
 azure-monitor-opentelemetry>=1.8.7
 python-multipart>=0.0.24
+PyJWT==2.12.1
+python-jose[cryptography]==3.5.0
