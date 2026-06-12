@@ -5,11 +5,17 @@ from fastapi import UploadFile
 from fastapi.responses import JSONResponse
 
 from db.db_manager import db_manager
-from db.models.helpdesk import COBCEDeclarations, COIDeclarations
+from db.models.helpdesk import (
+    COBCEDeclarations,
+    COIDeclarations,
+    R518Declarations,
+)
 from db.validators.comp_help import validate_coi_form
-from storage.storage_ops import init_json, upload_files
+from storage.storage_ops import init_json, load_json, upload_files
 from utils.helpers import db_timestamp_now, now_ist
-from utils.record_ids import build_record_id, new_suffix
+from utils.record_ids import build_record_id, new_suffix, resolve_record
+
+SELF_DECLARATION_TYPES = frozenset({"cobce", "coi", "r518"})
 
 
 def _coi_validation_errors(sub_type: str, form_data: dict) -> list[str]:
@@ -322,3 +328,91 @@ async def _save_coi(
         "status": "In-Progress",
         "declaration_type": "coi",
     }
+
+
+def _cobce_rows_from_record(record: COBCEDeclarations) -> list[dict]:
+    person_details = record.PersonDetails or {}
+    stored_rows = person_details.get("rows")
+    if stored_rows:
+        return [
+            {
+                "nature_of_violation": row.get("nature_of_violation")
+                or row.get("description", ""),
+                "person_responsible": row.get("person_responsible")
+                or person_details.get("name", record.CreatedBy),
+            }
+            for row in stored_rows
+        ]
+    return [{
+        "nature_of_violation": record.Description or "",
+        "person_responsible": person_details.get("name", record.CreatedBy),
+    }]
+
+
+def _serialize_self_declaration_record(
+    record_type: str,
+    record,
+    record_id: str,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "id": record_id,
+        "declaration_type": record_type,
+        "subType": record.SubType,
+        "status": record.Status,
+        "overallStatus": record.OverallStatus,
+        "pendingAt": record.PendingAt,
+        "createdBy": record.CreatedBy,
+        "createdOn": (
+            record.CreatedOn.isoformat() if record.CreatedOn else None
+        ),
+        "closureDate": (
+            record.ClosureDate.isoformat() if record.ClosureDate else None
+        ),
+        "responseJsonPath": record.ResponseJsonPath,
+    }
+
+    if record_type == "cobce":
+        payload["description"] = record.Description
+        payload["rows"] = _cobce_rows_from_record(record)
+    else:
+        payload["formData"] = record.FormData or {}
+
+    return payload
+
+
+async def get_self_declaration_by_id(
+    record_id: str,
+    staff_id: str,
+    is_admin: bool,
+) -> dict[str, Any]:
+    """Fetch COBCE / COI / R5.18 self-declaration by composite record id."""
+    try:
+        _, record_type, db_id = await resolve_record(record_id)
+    except ValueError as exc:
+        raise ValueError("Declaration not found") from exc
+
+    if record_type not in SELF_DECLARATION_TYPES:
+        raise ValueError("Not a self-declaration record")
+
+    if record_type == "cobce":
+        record = await db_manager.get(COBCEDeclarations, db_id)
+    elif record_type == "coi":
+        record = await db_manager.get(COIDeclarations, db_id)
+    else:
+        record = await db_manager.get(R518Declarations, db_id)
+
+    if not record:
+        raise ValueError("Declaration not found")
+
+    if record.CreatedBy != staff_id and not is_admin:
+        raise ValueError("Unauthorized")
+
+    data = _serialize_self_declaration_record(record_type, record, db_id)
+
+    if record.ResponseJsonPath:
+        try:
+            data["conversation"] = await load_json(record.ResponseJsonPath)
+        except Exception:
+            data["conversation"] = None
+
+    return data

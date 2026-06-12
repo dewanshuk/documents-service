@@ -3,8 +3,12 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 
-from services.self_declaration_service import save_self_declaration
+from services.self_declaration_service import (
+    get_self_declaration_by_id,
+    save_self_declaration,
+)
 from utils.deps import get_current_user
+from utils.authorize import is_active_cobce_coi_gift_lead
 from .self_declaration_config import SELF_DECLARATION_FORM_CONFIG
 from .route_utils import log_and_json_response
 
@@ -22,6 +26,50 @@ async def get_self_declaration_form_config():
         200,
         SELF_DECLARATION_FORM_CONFIG,
     )
+
+
+@router.get("/self-declaration/{record_id}")
+async def get_self_declaration_endpoint(
+    record_id: str,
+    user: dict = Depends(get_current_user),
+):
+    """Get COBCE / COI / R5.18 self-declaration by id (draft or submitted)."""
+    staff_id = user["staff_id"]
+    is_admin = user.get("is_master_admin", False) or await is_active_cobce_coi_gift_lead(
+        staff_id
+    )
+    try:
+        data = await get_self_declaration_by_id(record_id, staff_id, is_admin)
+        return log_and_json_response(
+            staff_id,
+            {"record_id": record_id},
+            "/self-declaration/{record_id}",
+            "GET",
+            200,
+            data,
+        )
+    except ValueError as e:
+        message = str(e)
+        status = 403 if message == "Unauthorized" else 404
+        if message == "Not a self-declaration record":
+            status = 400
+        return log_and_json_response(
+            staff_id,
+            {"record_id": record_id},
+            "/self-declaration/{record_id}",
+            "GET",
+            status,
+            {"error": message},
+        )
+    except Exception as e:
+        return log_and_json_response(
+            staff_id,
+            {"record_id": record_id},
+            "/self-declaration/{record_id}",
+            "GET",
+            500,
+            {"error": "Error fetching self-declaration", "details": str(e)},
+        )
 
 
 @router.post("/self-declaration")

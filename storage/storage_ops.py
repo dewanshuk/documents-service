@@ -50,6 +50,33 @@ async def init_json(record_id: str, json_data: dict) -> str:
     return _to_compliance_uri(f"{record_id}/conversation.json")
 
 
+def _json_path_from_uri(json_uri: str) -> Path:
+    relative = json_uri.replace(f"{COMPLIANCE_PREFIX}/", "", 1)
+    return LOCAL_STORAGE_ROOT / "compliance" / relative
+
+
+async def load_json(json_uri: str) -> dict:
+    path = _json_path_from_uri(json_uri)
+    data = await asyncio.to_thread(path.read_text, encoding="utf-8")
+    return json.loads(data)
+
+
+async def read_json(json_uri: str) -> dict:
+    return await load_json(json_uri)
+
+
+async def save_json(json_uri: str, json_data: dict) -> None:
+    path = _json_path_from_uri(json_uri)
+    payload = json.dumps(json_data, indent=2, default=str)
+    await asyncio.to_thread(path.write_text, payload, encoding="utf-8")
+
+
+async def append_json(json_uri: str, entry: dict) -> None:
+    data = await load_json(json_uri)
+    data.setdefault("conversation", []).append(entry)
+    await save_json(json_uri, data)
+
+
 async def get_container_client(container: str = "annual-declarations") -> Path:
     container_dir = LOCAL_STORAGE_ROOT / "annual-declarations"
     await asyncio.to_thread(container_dir.mkdir, parents=True, exist_ok=True)
