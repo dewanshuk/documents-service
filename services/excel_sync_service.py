@@ -7,6 +7,7 @@ from sqlalchemy import select, and_
 
 from db.db_manager import get_session
 from db.models import AnnualDeclaration, UserDeclarationStatus, SyncStatus
+from utils.record_ids import build_record_id
 from services.excel_service import _header_index_map, _parse_yes_no, parse_excel_counts
 from storage.storage_ops import download_to_stream
 
@@ -86,6 +87,7 @@ async def _process_declaration(declaration_id: UUID, file_path: str) -> dict:
                 else:
                     session.add(
                         UserDeclarationStatus(
+                            id=build_record_id(str(staff_id), str(declaration_id)),
                             declaration_id=declaration_id,
                             staff_id=str(staff_id),
                             status="not_started",

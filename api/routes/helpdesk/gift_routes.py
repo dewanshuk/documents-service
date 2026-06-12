@@ -1,9 +1,9 @@
 from fastapi import UploadFile, File, Form, APIRouter, Depends
 from typing import List
-from uuid import uuid4
-from datetime import datetime
-from zoneinfo import ZoneInfo
+
 from utils.deps import get_current_user
+from utils.helpers import now_ist, db_timestamp_now
+from utils.record_ids import new_suffix, build_record_id
 from db.db_manager import db_manager
 from db.models.helpdesk import GiftDeclarations
 from storage.storage_ops import upload_files, init_json
@@ -50,8 +50,10 @@ async def raise_gift(
                 {"error": "Max 6 files allowed"},
             )
 
-        gift_id = f"GFT-{uuid4()}"
-        now = datetime.now(ZoneInfo("Asia/Kolkata"))
+        staff_id = user["staff_id"]
+        gift_id = build_record_id(staff_id, new_suffix())
+        now = now_ist()
+        created_on = db_timestamp_now()
         file_paths = await upload_files(gift_id, "user", files)
 
         json_data = {
@@ -59,7 +61,7 @@ async def raise_gift(
             "conversation": [
                 {
                     "actor": "User",
-                    "actorId": user["staff_id"],
+                    "actorId": staff_id,
                     "dateTime": now.isoformat(),
                     "data": {
                         "status": status,
@@ -86,8 +88,8 @@ async def raise_gift(
                 "ApproxValueINR": approxValueINR,
                 "PortalApprovalTaken": portalApprovalTaken,
                 "PortalNumber": portalNumber,
-                "CreatedOn": now,
-                "CreatedBy": user["staff_id"],
+                "CreatedOn": created_on,
+                "CreatedBy": staff_id,
                 "OverallStatus": "Pending",
                 "PendingAt": 1,
                 "ResponseJsonPath": json_path,
@@ -95,12 +97,16 @@ async def raise_gift(
         )
 
         return log_and_json_response(
-            user["staff_id"],
+            staff_id,
             {"gift_id": gift_id},
             "/gift",
             "POST",
             201,
-            {"details": f"Gift declaration created with id: {gift_id}", "status": "Pending"},
+            {
+                "details": f"Gift declaration created with id: {gift_id}",
+                "status": "Pending",
+                "gift_id": gift_id,
+            },
         )
     except Exception as e:
         return log_and_json_response(

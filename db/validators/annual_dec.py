@@ -1,6 +1,6 @@
 from datetime import date, datetime
 from typing import Literal, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from uuid import UUID
 from db.models.annual_dec import DeclarationType
 
@@ -13,8 +13,7 @@ class AnnualDeclarationCreate(BaseModel):
     activity_closure_date: date
     status: Optional[str] = "Pending"
 
-    class Config:
-        use_enum_values = False
+    model_config = ConfigDict(use_enum_values=True)
 
 
 class AnnualDeclarationFilters(BaseModel):
@@ -30,12 +29,12 @@ class AnnualDeclarationFilters(BaseModel):
 
 class QuestionResponsePayload(BaseModel):
     question_id: str
-    response: str
+    response: Optional[str] = None
     declaration_details: Optional[list[dict]] = None
 
 
 class SaveDeclarationRequest(BaseModel):
-    """Unified save: draft allows partial answers; submit requires all mandatory fields."""
+    """Same payload shape for draft (partial/null allowed) and submit (all required)."""
 
     status: Literal["draft", "submit"]
     responses: list[QuestionResponsePayload] = Field(default_factory=list)

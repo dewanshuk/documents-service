@@ -13,10 +13,8 @@ COBCE_COI_QUESTIONS = {
         "options": ["option_a", "option_b"],
         "required": True,
         "detail_on": ["option_b"],
-        "detail_fields": ["description", "person_responsible"],
+        "detail_fields": ["nature_of_violation", "person_responsible"],
     },
-    "COBCE_Q2": {"type": "checkbox", "required": True},
-    "COBCE_Q3": {"type": "checkbox", "required": True},
 
     "COI_PREFACE": {"type": "checkbox", "required": True},
     "COI_Q1": {
@@ -24,60 +22,105 @@ COBCE_COI_QUESTIONS = {
         "options": ["agree", "disagree"],
         "required": True,
         "detail_on": ["disagree"],
+        "sub_type": "OUTSIDE_ACTIVITY",
         "detail_fields": [
             "company_name", "address", "type_of_activity", "remarks",
         ],
+        "form_field_map": {
+            "company_name": "companyName",
+            "address": "address",
+            "type_of_activity": "activityType",
+            "remarks": "remarks",
+        },
     },
     "COI_Q2": {
         "type": "radio",
         "options": ["agree", "disagree"],
         "required": True,
         "detail_on": ["disagree"],
+        "sub_type": "DIRECTORSHIP",
         "detail_fields": [
             "company_name", "address", "type_of_directorship", "remarks",
         ],
+        "form_field_map": {
+            "company_name": "companyName",
+            "address": "address",
+            "type_of_directorship": "typeOfDirectorship",
+            "remarks": "remarks",
+        },
     },
     "COI_Q3": {
         "type": "radio",
         "options": ["agree", "disagree"],
         "required": True,
         "detail_on": ["disagree"],
+        "sub_type": "FINANCIAL_INTEREST",
         "detail_fields": [
             "company_name", "address", "details_of_financial_interest", "remarks",
         ],
+        "form_field_map": {
+            "company_name": "companyName",
+            "address": "address",
+            "details_of_financial_interest": "financialInterestDetails",
+            "remarks": "remarks",
+        },
     },
     "COI_Q4": {
         "type": "radio",
         "options": ["agree", "disagree"],
         "required": True,
         "detail_on": ["disagree"],
+        "sub_type": "REPORTING_CONFLICT",
         "detail_fields": [
             "employee_name", "name_of_relative",
             "relative_relationship", "nature_of_conflict", "remarks",
         ],
+        "form_field_map": {
+            "employee_name": "employeeName",
+            "name_of_relative": "relativeName",
+            "relative_relationship": "relationship",
+            "nature_of_conflict": "natureOfConflict",
+            "remarks": "remarks",
+        },
     },
     "COI_Q5": {
         "type": "radio",
         "options": ["agree", "disagree"],
         "required": True,
         "detail_on": ["disagree"],
+        "sub_type": "GIFT",
         "detail_fields": [
             "dealer_supplier", "address", "details_of_gift",
             "date_received", "remarks", "employee_name",
         ],
+        "form_field_map": {
+            "dealer_supplier": "dealerSupplier",
+            "address": "address",
+            "details_of_gift": "giftDetails",
+            "date_received": "dateReceived",
+            "employee_name": "employeeName",
+            "remarks": "remarks",
+        },
     },
     "COI_Q6": {
         "type": "radio",
         "options": ["agree", "disagree"],
         "required": True,
         "detail_on": ["disagree"],
+        "sub_type": "PRICE_SENSITIVE_INFO",
         "detail_fields": [
             "employee_name", "date_of_disclosure", "information_shared",
             "name_of_third_party", "address", "remarks",
         ],
+        "form_field_map": {
+            "employee_name": "employeeName",
+            "date_of_disclosure": "dateOfDisclosure",
+            "information_shared": "informationShared",
+            "name_of_third_party": "thirdPartyName",
+            "address": "address",
+            "remarks": "remarks",
+        },
     },
-    "COI_ACK1": {"type": "checkbox", "required": True},
-    "COI_ACK2": {"type": "checkbox", "required": True},
 }
 
 
@@ -90,7 +133,6 @@ DECLARATION_CONFIGS: dict[str, dict] = {
 }
 
 
-
 def get_question_config(declaration_name: str) -> dict:
     return DECLARATION_CONFIGS.get(declaration_name, {})
 
@@ -101,14 +143,15 @@ def get_required_question_ids(declaration_name: str) -> set[str]:
 
 
 def check_has_conflict(responses: list[dict]) -> bool:
-    return any(r.get("response") in CONFLICT_RESPONSES for r in responses)
+    return any(
+        r.get("response") in CONFLICT_RESPONSES for r in responses
+    )
 
 
 def validate_submission_responses(
     responses: list[dict], declaration_name: str
 ) -> list[str]:
-    """Validate responses against the question config.
-    Returns a list of error messages (empty = valid)."""
+    """Validate all required questions on submit. Draft may omit or null answers."""
     config = get_question_config(declaration_name)
     errors: list[str] = []
 
@@ -121,9 +164,12 @@ def validate_submission_responses(
                     )
         return errors
 
+    by_qid = {r["question_id"]: r for r in responses}
     required = get_required_question_ids(declaration_name)
-    submitted_ids = {r["question_id"] for r in responses}
-    missing = required - submitted_ids
+    missing = {
+        qid for qid in required
+        if not by_qid.get(qid) or by_qid[qid].get("response") is None
+    }
     if missing:
         errors.append(f"Missing required questions: {', '.join(sorted(missing))}")
 
@@ -134,6 +180,8 @@ def validate_submission_responses(
             continue
 
         response_val = resp.get("response")
+        if response_val is None:
+            continue
 
         if q_config["type"] == "radio":
             valid_opts = q_config.get("options", [])
@@ -144,14 +192,13 @@ def validate_submission_responses(
                 )
             elif response_val in q_config.get("detail_on", []):
                 details = resp.get("declaration_details")
-                if not details or len(details) == 0:
+                if not details:
                     errors.append(
                         f"{qid}: At least one detail row required "
                         f"when '{response_val}' is selected"
                     )
 
-        elif q_config["type"] == "checkbox":
-            if response_val != "checked":
-                errors.append(f"{qid}: Must be 'checked'")
+        elif q_config["type"] == "checkbox" and response_val != "checked":
+            errors.append(f"{qid}: Must be 'checked'")
 
     return errors

@@ -12,10 +12,16 @@ from db.models import (
     UserDeclarationStatus,
     UserDeclarationResponse,
     IST,
+    as_declaration_name,
 )
+from db.models.helpdesk import COBCEDeclarations, COIDeclarations
+from utils.helpers import db_timestamp_now, now_ist
+from utils.record_ids import new_suffix, build_record_id
+from storage.storage_ops import init_json
 from db.validators import AnnualDeclarationFilters
 from api.routes.annual_dec.question_config import (
     CONFLICT_RESPONSES,
+    get_question_config,
     validate_submission_responses,
 )
 
@@ -50,6 +56,57 @@ def _ensure_declaration_accessible(declaration: AnnualDeclaration) -> None:
         )
 
 
+async def _load_all_responses(session, status_record_id: str) -> list[dict]:
+    stmt = select(UserDeclarationResponse).where(
+        UserDeclarationResponse.declaration_status_id == status_record_id
+    )
+    rows = (await session.execute(stmt)).scalars().all()
+    return [
+        {
+            "question_id": r.question_id,
+            "response": r.response,
+            "declaration_details": r.declaration_details,
+        }
+        for r in rows
+    ]
+
+
+async def _seed_null_responses(session, status_record_id: str, decl_name: str) -> None:
+    for qid in get_question_config(decl_name):
+        session.add(
+            UserDeclarationResponse(
+                declaration_status_id=status_record_id,
+                question_id=qid,
+                response=None,
+                declaration_details=None,
+            )
+        )
+
+
+async def _upsert_response(session, status_record_id: str, resp: dict) -> None:
+    existing_stmt = select(UserDeclarationResponse).where(
+        and_(
+            UserDeclarationResponse.declaration_status_id == status_record_id,
+            UserDeclarationResponse.question_id == resp["question_id"],
+        )
+    )
+    existing = (await session.execute(existing_stmt)).scalar_one_or_none()
+
+    if existing:
+        existing.response = resp.get("response")
+        existing.declaration_details = resp.get("declaration_details")
+        existing.updated_at = datetime.now(IST)
+    else:
+        session.add(
+            UserDeclarationResponse(
+                declaration_status_id=status_record_id,
+                question_id=resp["question_id"],
+                response=resp.get("response"),
+                declaration_details=resp.get("declaration_details"),
+            )
+        )
+
+
 async def save_user_declaration(
     declaration_id: UUID,
     staff_id: str,
@@ -64,12 +121,8 @@ async def save_user_declaration(
             raise ValueError("Declaration not found")
         _ensure_declaration_accessible(declaration)
 
-        decl_name = declaration.declaration_name.value
-
-        if is_submit:
-            errors = validate_submission_responses(responses, decl_name)
-            if errors:
-                raise ValueError("; ".join(errors))
+        decl_name = as_declaration_name(declaration.declaration_name)
+        question_config = get_question_config(decl_name)
 
         stmt = select(UserDeclarationStatus).where(
             and_(
@@ -78,55 +131,51 @@ async def save_user_declaration(
             )
         )
         status_record = (await session.execute(stmt)).scalar_one_or_none()
+        is_new = status_record is None
 
-        if not status_record:
+        if is_new:
             status_record = UserDeclarationStatus(
+                id=build_record_id(staff_id, str(declaration_id)),
                 declaration_id=declaration_id,
                 staff_id=staff_id,
                 status="draft",
             )
             session.add(status_record)
             await session.flush()
+            if question_config:
+                await _seed_null_responses(session, status_record.id, decl_name)
+                await session.flush()
+        elif status_record.status == "completed":
+            raise ValueError("Declaration already submitted and cannot be edited")
         elif status_record.status == "not_started":
             status_record.status = "draft"
 
         for resp in responses:
-            existing_stmt = select(UserDeclarationResponse).where(
-                and_(
-                    UserDeclarationResponse.declaration_status_id == status_record.id,
-                    UserDeclarationResponse.question_id == resp["question_id"],
-                )
-            )
-            existing = (await session.execute(existing_stmt)).scalar_one_or_none()
-
-            if existing:
-                existing.response = resp["response"]
-                existing.declaration_details = resp.get("declaration_details")
-                existing.updated_at = datetime.now(IST)
-            else:
-                session.add(
-                    UserDeclarationResponse(
-                        declaration_status_id=status_record.id,
-                        question_id=resp["question_id"],
-                        response=resp["response"],
-                        declaration_details=resp.get("declaration_details"),
-                    )
-                )
+            await _upsert_response(session, status_record.id, resp)
 
         await session.flush()
 
-        all_resp_stmt = select(UserDeclarationResponse.response).where(
-            UserDeclarationResponse.declaration_status_id == status_record.id
-        )
-        all_resp_rows = (await session.execute(all_resp_stmt)).all()
-        has_conflicts = any(r[0] in CONFLICT_RESPONSES for r in all_resp_rows)
+        all_responses = await _load_all_responses(session, status_record.id)
 
+        if is_submit:
+            errors = validate_submission_responses(all_responses, decl_name)
+            if errors:
+                raise ValueError("; ".join(errors))
+
+        has_conflicts = any(
+            r.get("response") in CONFLICT_RESPONSES for r in all_responses
+        )
         status_record.has_conflicts = has_conflicts
         status_record.last_saved_at = datetime.now(IST)
 
+        created_self_declarations: list[dict] = []
         if is_submit:
             status_record.status = "completed"
             status_record.submitted_at = datetime.now(IST)
+            if has_conflicts:
+                created_self_declarations = await _auto_create_self_declarations(
+                    session, staff_id, all_responses, decl_name
+                )
         elif status_record.status != "completed":
             status_record.status = "draft"
 
@@ -136,6 +185,7 @@ async def save_user_declaration(
             "id": str(status_record.id),
             "status": status_record.status,
             "has_conflicts": status_record.has_conflicts,
+            "created_self_declarations": created_self_declarations,
         }
 
 
@@ -193,7 +243,7 @@ async def list_declarations(
         items = [
             {
                 "declaration_id": str(decl.id),
-                "declaration_name": decl.declaration_name.value,
+                "declaration_name": as_declaration_name(decl.declaration_name),
                 "financial_year": decl.financial_year,
                 "assigned_date": decl.assigned_date.isoformat(),
                 "due_date": decl.due_date.isoformat(),
@@ -236,10 +286,13 @@ async def get_declaration_user_responses(
 
         user = await session.get(User, staff_id)
 
+        decl_name = as_declaration_name(declaration.declaration_name)
+        question_config = get_question_config(decl_name)
+
         if not status_record:
             return {
                 "declaration_id": str(declaration_id),
-                "declaration_name": declaration.declaration_name.value,
+                "declaration_name": decl_name,
                 "financial_year": declaration.financial_year,
                 "staff_id": staff_id,
                 "name": user.username if user else None,
@@ -248,12 +301,21 @@ async def get_declaration_user_responses(
                 "declaration_status": "not_started",
                 "has_conflicts": False,
                 "submitted_at": None,
-                "responses": [],
+                "responses": [
+                    {
+                        "question_id": qid,
+                        "response": None,
+                        "declaration_details": None,
+                    }
+                    for qid in question_config
+                ],
             }
+
+        prefilled = await _get_prefill_data(session, staff_id, decl_name)
 
         return {
             "declaration_id": str(declaration_id),
-            "declaration_name": declaration.declaration_name.value,
+            "declaration_name": decl_name,
             "financial_year": declaration.financial_year,
             "staff_id": staff_id,
             "name": user.username if user else None,
@@ -274,4 +336,214 @@ async def get_declaration_user_responses(
                 }
                 for r in status_record.responses
             ],
+            "prefilled_declarations": prefilled,
         }
+
+
+def _coi_subtype_to_question(decl_name: str) -> dict[str, str]:
+    return {
+        q["sub_type"]: qid
+        for qid, q in get_question_config(decl_name).items()
+        if q.get("sub_type")
+    }
+
+
+def _linked_self_declaration_id(detail: dict) -> str | None:
+    return detail.get("self_declaration_id") or detail.get("linked_declaration_id")
+
+
+def _map_annual_coi_detail(qid: str, detail: dict, decl_name: str) -> dict:
+    mapping = get_question_config(decl_name).get(qid, {}).get("form_field_map", {})
+    form_data = {}
+    for key, value in detail.items():
+        if key in ("self_declaration_id", "linked_declaration_id"):
+            continue
+        form_data[mapping.get(key, key)] = value
+    return form_data
+
+
+async def _init_self_declaration_conversation(
+    record_id: str, staff_id: str, data: dict
+) -> str:
+    now = now_ist()
+    json_data = {
+        "id": record_id,
+        "conversation": [
+            {
+                "actor": "User",
+                "actorId": staff_id,
+                "dateTime": now.isoformat(),
+                "data": data,
+                "files": [],
+            }
+        ],
+    }
+    return await init_json(record_id, json_data)
+
+
+async def _auto_create_self_declarations(
+    session, staff_id: str, responses: list[dict], decl_name: str
+) -> list[dict]:
+    """
+    When user submits an annual declaration with disagree/option_b responses,
+    create self-declaration rows in COBCE / COI tables (one per detail item).
+    Each record gets a conversation thread so user/admin can respond with files.
+    """
+    created: list[dict] = []
+    created_on = db_timestamp_now()
+
+    for resp in responses:
+        if resp.get("response") not in CONFLICT_RESPONSES:
+            continue
+
+        details_list = resp.get("declaration_details") or []
+        if not details_list:
+            continue
+
+        qid = resp["question_id"]
+
+        if qid.startswith("COBCE"):
+            for detail in details_list:
+                linked_id = _linked_self_declaration_id(detail)
+                if linked_id:
+                    created.append({
+                        "record_id": linked_id,
+                        "type": "Self Declaration",
+                        "sub_type": "COBCE",
+                        "linked": True,
+                    })
+                    continue
+
+                record_id = build_record_id(staff_id, new_suffix())
+                nature = detail.get("nature_of_violation") or detail.get(
+                    "description", ""
+                )
+                person_details = {
+                    "name": detail.get("person_responsible", staff_id),
+                }
+                conv_data = {
+                    "subType": "COBCE_VIOLATION",
+                    "natureOfViolation": nature,
+                    "description": nature,
+                    "personDetails": person_details,
+                    "source": "annual_declaration",
+                    "question_id": qid,
+                }
+                json_path = await _init_self_declaration_conversation(
+                    record_id, staff_id, conv_data
+                )
+                session.add(
+                    COBCEDeclarations(
+                        COBCEId=record_id,
+                        SubType="COBCE_VIOLATION",
+                        Description=nature,
+                        PersonDetails=person_details,
+                        Status="In_Progress",
+                        CreatedOn=created_on,
+                        CreatedBy=staff_id,
+                        OverallStatus="Pending",
+                        PendingAt=1,
+                        ResponseJsonPath=json_path,
+                    )
+                )
+                created.append({
+                    "record_id": record_id,
+                    "type": "Self Declaration",
+                    "sub_type": "COBCE",
+                    "linked": False,
+                })
+
+        elif qid.startswith("COI"):
+            q_config = get_question_config(decl_name).get(qid, {})
+            sub_type = q_config.get("sub_type", "OTHERS")
+            for detail in details_list:
+                linked_id = _linked_self_declaration_id(detail)
+                if linked_id:
+                    created.append({
+                        "record_id": linked_id,
+                        "type": "Self Declaration",
+                        "sub_type": "COI",
+                        "linked": True,
+                    })
+                    continue
+
+                record_id = build_record_id(staff_id, new_suffix())
+                form_data = _map_annual_coi_detail(qid, detail, decl_name)
+                conv_data = {
+                    "subType": sub_type,
+                    "formData": form_data,
+                    "source": "annual_declaration",
+                    "question_id": qid,
+                }
+                json_path = await _init_self_declaration_conversation(
+                    record_id, staff_id, conv_data
+                )
+                session.add(
+                    COIDeclarations(
+                        COIId=record_id,
+                        SubType=sub_type,
+                        FormData=form_data,
+                        Status="In-Progress",
+                        CreatedOn=created_on,
+                        CreatedBy=staff_id,
+                        OverallStatus="Pending",
+                        PendingAt=1,
+                        ResponseJsonPath=json_path,
+                    )
+                )
+                created.append({
+                    "record_id": record_id,
+                    "type": "Self Declaration",
+                    "sub_type": "COI",
+                    "linked": False,
+                })
+
+    return created
+
+
+async def _get_prefill_data(session, staff_id: str, decl_name: str) -> list[dict]:
+    """
+    Fetch existing self declarations for the user to pre-fill
+    the annual declaration form.
+    """
+    prefilled = []
+
+    if decl_name == "COBCE/COI":
+        cobce_stmt = select(COBCEDeclarations).where(
+            COBCEDeclarations.CreatedBy == staff_id
+        )
+        cobce_records = (await session.execute(cobce_stmt)).scalars().all()
+        for rec in cobce_records:
+            prefilled.append({
+                "source": "cobce",
+                "record_id": rec.COBCEId,
+                "sub_type": rec.SubType,
+                "question_id": "COBCE_Q1",
+                "details": {
+                    "nature_of_violation": rec.Description,
+                    "person_responsible": (rec.PersonDetails or {}).get("name", ""),
+                    "self_declaration_id": rec.COBCEId,
+                },
+                "status": rec.OverallStatus,
+            })
+
+        coi_stmt = select(COIDeclarations).where(
+            COIDeclarations.CreatedBy == staff_id
+        )
+        coi_records = (await session.execute(coi_stmt)).scalars().all()
+
+        subtype_to_question = _coi_subtype_to_question(decl_name)
+        for rec in coi_records:
+            question_id = subtype_to_question.get(rec.SubType, "COI_Q6")
+            coi_details = dict(rec.FormData or {})
+            coi_details["self_declaration_id"] = rec.COIId
+            prefilled.append({
+                "source": "coi",
+                "record_id": rec.COIId,
+                "sub_type": rec.SubType,
+                "question_id": question_id,
+                "details": coi_details,
+                "status": rec.OverallStatus,
+            })
+
+    return prefilled

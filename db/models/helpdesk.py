@@ -66,7 +66,7 @@ class GiftDeclarations(Base):
     __tablename__ = "gift_declarations"
     __table_args__ = {"schema": "compliance"}
 
-    GiftId: Mapped[str] = mapped_column(String(100), primary_key=True)
+    GiftId: Mapped[str] = mapped_column(String(80), primary_key=True)
     Status: Mapped[str]
     Person: Mapped[str]
     Organization: Mapped[str]
@@ -87,7 +87,7 @@ class Complaints(Base):
     __tablename__ = "complaints"
     __table_args__ = {"schema": "compliance"}
 
-    ComplaintId: Mapped[str] = mapped_column(String(100), primary_key=True)
+    ComplaintId: Mapped[str] = mapped_column(String(80), primary_key=True)
     ComplaintType: Mapped[str]
     ComplaintDetails: Mapped[str]
 
@@ -106,7 +106,7 @@ class COBCEDeclarations(Base):
     __tablename__ = "cobce_declarations"
     __table_args__ = {"schema": "compliance"}
 
-    COBCEId: Mapped[str] = mapped_column(String(100), primary_key=True)
+    COBCEId: Mapped[str] = mapped_column(String(80), primary_key=True)
 
     SubType: Mapped[str]
     Description: Mapped[str]
@@ -128,7 +128,30 @@ class COBCEDeclarations(Base):
 class COIDeclarations(Base):
     __tablename__ = "coi_declarations"
     __table_args__ = {"schema": "compliance"}
-    COIId: Mapped[str] = mapped_column(String(100), primary_key=True)
+    COIId: Mapped[str] = mapped_column(String(80), primary_key=True)
+
+    SubType: Mapped[str]
+    FormData: Mapped[dict] = mapped_column(JSON, nullable=False)
+
+    Status: Mapped[str]  # Draft / In-Progress / Completed
+
+    CreatedOn: Mapped[datetime]
+    CreatedBy: Mapped[str]
+
+    OverallStatus: Mapped[str | None]
+    PendingAt: Mapped[int | None]
+
+    ClosureDate: Mapped[datetime | None]
+    ClosedBy: Mapped[str | None]
+
+    ResponseJsonPath: Mapped[str | None]
+
+
+class R518Declarations(Base):
+    __tablename__ = "r518_declarations"
+    __table_args__ = {"schema": "compliance"}
+
+    R518Id: Mapped[str] = mapped_column(String(80), primary_key=True)
 
     SubType: Mapped[str]
     FormData: Mapped[dict] = mapped_column(JSON, nullable=False)

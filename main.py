@@ -2,6 +2,7 @@ from api.routes.helpdesk import compliance_helpdesk
 from fastapi import FastAPI
 from db.db_manager import init_db
 from db.models.helpdesk import Base
+from db.models.annual_dec import Base as AnnualBase
 from contextlib import asynccontextmanager
 from storage.storage_ops import close_clients as close_storage_clients
 from db.redis_cache import close_redis
@@ -17,6 +18,7 @@ from api.routes.helpdesk import health_router
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db(Base)
+    await init_db(AnnualBase)
     init_ai_logger()
     yield
     await close_storage_clients()

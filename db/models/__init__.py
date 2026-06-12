@@ -7,6 +7,7 @@ from db.models.annual_dec import (
     User,
     UserDeclarationResponse,
     UserDeclarationStatus,
+    as_declaration_name,
 )
 
 __all__ = [
@@ -18,4 +19,5 @@ __all__ = [
     "User",
     "UserDeclarationResponse",
     "UserDeclarationStatus",
+    "as_declaration_name",
 ]

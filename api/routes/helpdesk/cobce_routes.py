@@ -1,9 +1,9 @@
 from fastapi import UploadFile, File, Form, APIRouter, Depends
 from typing import List
-from uuid import uuid4
-from datetime import datetime
-from zoneinfo import ZoneInfo
+
 from utils.deps import get_current_user
+from utils.helpers import now_ist, db_timestamp_now
+from utils.record_ids import new_suffix, build_record_id
 from db.db_manager import db_manager
 from db.models.helpdesk import COBCEDeclarations
 from storage.storage_ops import upload_files, init_json
@@ -22,21 +22,22 @@ async def create_cobce(
 ):
     """Create a COBCE declaration in draft state."""
     try:
-        sid = f"COBCE-{uuid4()}"
-        now = datetime.now(ZoneInfo("Asia/Kolkata"))
-        created_on = now.astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
-        person_details = {"name": user["staff_id"]}
+        staff_id = user["staff_id"]
+        record_id = build_record_id(staff_id, new_suffix())
+        now = now_ist()
+        created_on = db_timestamp_now()
+        person_details = {"name": staff_id}
 
         await db_manager.create(
             COBCEDeclarations,
             {
-                "COBCEId": sid,
+                "COBCEId": record_id,
                 "SubType": subType,
                 "Description": description,
                 "PersonDetails": person_details,
                 "Status": "Draft",
                 "CreatedOn": created_on,
-                "CreatedBy": user["staff_id"],
+                "CreatedBy": staff_id,
                 "OverallStatus": None,
                 "PendingAt": None,
                 "ResponseJsonPath": None,
@@ -44,13 +45,13 @@ async def create_cobce(
         )
 
         return log_and_json_response(
-            user["staff_id"],
+            staff_id,
             {"subType": subType, "description": description},
             "/cobce-draft",
             "POST",
             201,
             {
-                "COBCE with Draft State has been created with ID {sid}": sid,
+                "id": record_id,
                 "status": "Draft",
             },
         )
@@ -152,7 +153,7 @@ async def submit_cobce(
                 {"error": "Unauthorized"},
             )
 
-        now = datetime.now(ZoneInfo("Asia/Kolkata"))
+        now = now_ist()
         file_paths = await upload_files(id, "user", files)
         json_data = {
             "id": id,
@@ -176,7 +177,7 @@ async def submit_cobce(
             COBCEDeclarations,
             id,
             {
-                "Status": "In_Progress",
+                "Status": "In-Progress",
                 "PendingAt": 1,
                 "OverallStatus": "Pending",
                 "ResponseJsonPath": json_path,

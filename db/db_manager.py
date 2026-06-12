@@ -254,5 +254,11 @@ async def init_db(Base):
         await conn.execute(text("CREATE SCHEMA IF NOT EXISTS users"))
         await conn.execute(text("CREATE SCHEMA IF NOT EXISTS annual_declarations"))
         await conn.execute(text("CREATE SCHEMA IF NOT EXISTS compliance"))
+        await conn.execute(
+            text(
+                "CREATE SEQUENCE IF NOT EXISTS compliance.complaint_id_seq "
+                "START 1 INCREMENT 1"
+            )
+        )
         await conn.execute(text("SET search_path TO compliance, public;"))
         await conn.run_sync(Base.metadata.create_all)

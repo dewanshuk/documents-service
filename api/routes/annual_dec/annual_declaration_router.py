@@ -4,7 +4,7 @@ from fastapi.responses import StreamingResponse, JSONResponse
 from datetime import datetime
 
 from db.db_manager import db_manager
-from db.models import AnnualDeclaration, DeclarationType, SyncStatus
+from db.models import AnnualDeclaration, DeclarationType, SyncStatus, as_declaration_name
 from db.validators import (
     AnnualDeclarationCreate,
     AnnualDeclarationFilters,
@@ -29,10 +29,11 @@ async def create_declaration(
     current_user: dict = Depends(get_current_user),
 ):
     try:
+        decl_name = as_declaration_name(payload.declaration_name)
         existing = await db_manager.list(
             AnnualDeclaration,
             filters={
-                "declaration_name": payload.declaration_name,
+                "declaration_name": decl_name,
                 "financial_year": payload.financial_year,
             },
             limit=1,
@@ -44,7 +45,9 @@ async def create_declaration(
                 status_code=409, detail="Declaration cycle already exists"
             )
 
-        await db_manager.create(AnnualDeclaration, payload.model_dump())
+        data = payload.model_dump()
+        data["declaration_name"] = decl_name
+        await db_manager.create(AnnualDeclaration, data)
         return JSONResponse(
             content={"message": "Declaration record created successfully"},
             status_code=201,
@@ -184,7 +187,7 @@ async def download_declaration_file(
 
     try:
         report = await generate_declaration_report(declaration_id)
-        decl_name = declaration.declaration_name.value.replace("/", "_")
+        decl_name = as_declaration_name(declaration.declaration_name).replace("/", "_")
         filename = (
             f"Declaration_Report_{decl_name}_FY_{declaration.financial_year}.xlsx"
         )

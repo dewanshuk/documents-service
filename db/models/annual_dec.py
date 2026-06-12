@@ -51,6 +51,12 @@ class User(Base):
     is_policy_hub_admin = mapped_column(Boolean, nullable=False, default=False)
 
 
+def as_declaration_name(value: DeclarationType | str) -> str:
+    if isinstance(value, DeclarationType):
+        return value.value
+    return str(value)
+
+
 class AnnualDeclaration(Base):
     __tablename__ = "annual_declarations"
     __table_args__ = (
@@ -59,16 +65,7 @@ class AnnualDeclaration(Base):
     )
 
     id = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    declaration_name = mapped_column(
-        Enum(
-            DeclarationType,
-            name="declaration_type_enum",
-            schema="annual_declarations",
-            values_callable=lambda obj: [e.name for e in obj],
-            create_type=False,
-        ),
-        nullable=False,
-    )
+    declaration_name = mapped_column(String(20), nullable=False)
     financial_year = mapped_column(String(7), nullable=False)
     assigned_date = mapped_column(Date, nullable=False)
     due_date = mapped_column(Date, nullable=False)
@@ -112,7 +109,7 @@ class UserDeclarationStatus(Base):
         {"schema": "annual_declarations"},
     )
 
-    id = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = mapped_column(String(80), primary_key=True)
     declaration_id = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("annual_declarations.annual_declarations.id", ondelete="CASCADE"),
@@ -153,14 +150,14 @@ class UserDeclarationResponse(Base):
 
     id = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     declaration_status_id = mapped_column(
-        UUID(as_uuid=True),
+        String(80),
         ForeignKey(
             "annual_declarations.user_declaration_status.id", ondelete="CASCADE"
         ),
         nullable=False,
     )
     question_id = mapped_column(String(50), nullable=False)
-    response = mapped_column(String(20), nullable=False)
+    response = mapped_column(String(20), nullable=True)
     declaration_details = mapped_column(JSONB, nullable=True)
     created_at = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(IST)

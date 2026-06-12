@@ -1,14 +1,13 @@
 from fastapi import UploadFile, File, Form, APIRouter, Depends
 from typing import List
-from uuid import uuid4
-from datetime import datetime
-from zoneinfo import ZoneInfo
+
 from utils.deps import get_current_user
+from utils.helpers import now_ist, db_timestamp_now, validate_word_limit
+from utils.record_ids import build_record_id, next_complaint_suffix
 from db.db_manager import db_manager
 from db.models.helpdesk import Complaints
 from db.validators.comp_help import QueryType
 from storage.storage_ops import upload_files, init_json
-from utils.helpers import validate_word_limit
 from .route_utils import log_and_json_response
 
 router = APIRouter()
@@ -46,8 +45,11 @@ async def raise_complaint(
                 {"error": str(e)},
             )
 
-        complaint_id = f"CMP-{uuid4()}"
-        now = datetime.now(ZoneInfo("Asia/Kolkata"))
+        staff_id = user["staff_id"]
+        now = now_ist()
+        created_on = db_timestamp_now()
+        complaint_suffix = await next_complaint_suffix()
+        complaint_id = build_record_id(staff_id, complaint_suffix)
         file_paths = await upload_files(complaint_id, "user", files)
 
         json_data = {
@@ -55,7 +57,7 @@ async def raise_complaint(
             "conversation": [
                 {
                     "actor": "User",
-                    "actorId": user["staff_id"],
+                    "actorId": staff_id,
                     "dateTime": now.isoformat(),
                     "data": {
                         "complaintType": complaintType.value,
@@ -74,8 +76,8 @@ async def raise_complaint(
                 "ComplaintId": complaint_id,
                 "ComplaintType": complaintType.value,
                 "ComplaintDetails": complaintDetails,
-                "CreatedOn": now,
-                "CreatedBy": user["staff_id"],
+                "CreatedOn": created_on,
+                "CreatedBy": staff_id,
                 "OverallStatus": "Pending",
                 "PendingAt": 1,
                 "ResponseJsonPath": json_path,
@@ -83,12 +85,16 @@ async def raise_complaint(
         )
 
         return log_and_json_response(
-            user["staff_id"],
+            staff_id,
             {"complaint_id": complaint_id},
             "/complaint",
             "POST",
             201,
-            {"details": f"Complaint has been created with complaint_id: {complaint_id}", "status": "Pending"},
+            {
+                "details": f"Complaint has been created with complaint_id: {complaint_id}",
+                "status": "Pending",
+                "complaint_id": complaint_id,
+            },
         )
     except Exception as e:
         return log_and_json_response(

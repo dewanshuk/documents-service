@@ -5,7 +5,7 @@ from openpyxl import Workbook, load_workbook
 from sqlalchemy import select, func
 
 from db.db_manager import get_session
-from db.models import AnnualDeclaration, User, UserDeclarationStatus
+from db.models import AnnualDeclaration, User, UserDeclarationStatus, as_declaration_name
 
 EXCEL_HEADERS = [
     "Staff ID",
@@ -90,7 +90,7 @@ async def generate_declaration_report(declaration_id: UUID) -> BytesIO:
         if not declaration:
             raise ValueError("Declaration not found")
 
-        decl_name = declaration.declaration_name.value
+        decl_name = as_declaration_name(declaration.declaration_name)
         financial_year = declaration.financial_year
 
         users = (
