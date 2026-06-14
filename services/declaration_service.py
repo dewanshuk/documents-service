@@ -2,7 +2,7 @@ from datetime import date, datetime
 from enum import Enum
 from uuid import UUID
 
-from sqlalchemy import select, and_, cast, String, func
+from sqlalchemy import select, and_, cast, String, func, delete
 from sqlalchemy.orm import selectinload
 
 from db.db_manager import get_session
@@ -24,6 +24,9 @@ from api.routes.annual_dec.question_config import (
     get_question_config,
     validate_submission_responses,
 )
+
+# Single user_declaration_responses row holds the full form JSON.
+FORM_RESPONSES_QUESTION_ID = "FORM_RESPONSES"
 
 
 def _row_to_dict(row):
@@ -56,55 +59,84 @@ def _ensure_declaration_accessible(declaration: AnnualDeclaration) -> None:
         )
 
 
+def _default_responses(decl_name: str) -> list[dict]:
+    return [
+        {
+            "question_id": qid,
+            "response": None,
+            "declaration_details": None,
+        }
+        for qid in get_question_config(decl_name)
+    ]
+
+
+def _merge_responses_by_question_id(
+    stored: list[dict],
+    incoming: list[dict],
+    decl_name: str,
+) -> list[dict]:
+    by_qid = {r["question_id"]: r for r in stored}
+    for resp in incoming:
+        qid = resp["question_id"]
+        by_qid[qid] = {
+            "question_id": qid,
+            "response": resp.get("response"),
+            "declaration_details": resp.get("declaration_details"),
+        }
+    return [
+        by_qid.get(
+            qid,
+            {"question_id": qid, "response": None, "declaration_details": None},
+        )
+        for qid in get_question_config(decl_name)
+    ]
+
+
 async def _load_all_responses(session, status_record_id: str) -> list[dict]:
     stmt = select(UserDeclarationResponse).where(
         UserDeclarationResponse.declaration_status_id == status_record_id
     )
     rows = (await session.execute(stmt)).scalars().all()
-    return [
-        {
-            "question_id": r.question_id,
-            "response": r.response,
-            "declaration_details": r.declaration_details,
-        }
-        for r in rows
-    ]
+
+    form_row = next(
+        (r for r in rows if r.question_id == FORM_RESPONSES_QUESTION_ID),
+        None,
+    )
+    if form_row and form_row.declaration_details:
+        stored = form_row.declaration_details.get("responses")
+        if isinstance(stored, list):
+            return stored
+
+    if rows:
+        return [
+            {
+                "question_id": r.question_id,
+                "response": r.response,
+                "declaration_details": r.declaration_details,
+            }
+            for r in rows
+            if r.question_id != FORM_RESPONSES_QUESTION_ID
+        ]
+
+    return []
 
 
-async def _seed_null_responses(session, status_record_id: str, decl_name: str) -> None:
-    for qid in get_question_config(decl_name):
-        session.add(
-            UserDeclarationResponse(
-                declaration_status_id=status_record_id,
-                question_id=qid,
-                response=None,
-                declaration_details=None,
-            )
-        )
-
-
-async def _upsert_response(session, status_record_id: str, resp: dict) -> None:
-    existing_stmt = select(UserDeclarationResponse).where(
-        and_(
-            UserDeclarationResponse.declaration_status_id == status_record_id,
-            UserDeclarationResponse.question_id == resp["question_id"],
+async def _persist_form_responses(
+    session, status_record_id: str, responses: list[dict]
+) -> None:
+    await session.execute(
+        delete(UserDeclarationResponse).where(
+            UserDeclarationResponse.declaration_status_id == status_record_id
         )
     )
-    existing = (await session.execute(existing_stmt)).scalar_one_or_none()
-
-    if existing:
-        existing.response = resp.get("response")
-        existing.declaration_details = resp.get("declaration_details")
-        existing.updated_at = datetime.now(IST)
-    else:
-        session.add(
-            UserDeclarationResponse(
-                declaration_status_id=status_record_id,
-                question_id=resp["question_id"],
-                response=resp.get("response"),
-                declaration_details=resp.get("declaration_details"),
-            )
+    session.add(
+        UserDeclarationResponse(
+            declaration_status_id=status_record_id,
+            question_id=FORM_RESPONSES_QUESTION_ID,
+            response=None,
+            declaration_details={"responses": responses},
         )
+    )
 
 
 async def save_user_declaration(
@@ -142,20 +174,19 @@ async def save_user_declaration(
             )
             session.add(status_record)
             await session.flush()
-            if question_config:
-                await _seed_null_responses(session, status_record.id, decl_name)
-                await session.flush()
         elif status_record.status == "completed":
             raise ValueError("Declaration already submitted and cannot be edited")
         elif status_record.status == "not_started":
             status_record.status = "draft"
 
-        for resp in responses:
-            await _upsert_response(session, status_record.id, resp)
-
+        stored = await _load_all_responses(session, status_record.id)
+        if not stored:
+            stored = _default_responses(decl_name)
+        merged = _merge_responses_by_question_id(stored, responses, decl_name)
+        await _persist_form_responses(session, status_record.id, merged)
         await session.flush()
 
-        all_responses = await _load_all_responses(session, status_record.id)
+        all_responses = merged
 
         if is_submit:
             errors = validate_submission_responses(all_responses, decl_name)
@@ -328,14 +359,7 @@ async def get_declaration_user_responses(
                 if status_record.submitted_at
                 else None
             ),
-            "responses": [
-                {
-                    "question_id": r.question_id,
-                    "response": r.response,
-                    "declaration_details": r.declaration_details,
-                }
-                for r in status_record.responses
-            ],
+            "responses": await _load_all_responses(session, status_record.id),
             "prefilled_declarations": prefilled,
         }
 

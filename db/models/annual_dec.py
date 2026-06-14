@@ -138,7 +138,7 @@ class UserDeclarationStatus(Base):
 
 
 class UserDeclarationResponse(Base):
-    """One row per question; disagree details stored in JSONB."""
+    """One row per user form; all answers stored in declaration_details JSONB."""
 
     __tablename__ = "user_declaration_responses"
     __table_args__ = (
