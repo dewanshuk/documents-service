@@ -3,7 +3,7 @@ from typing import List
 
 from utils.deps import get_current_user
 from utils.helpers import now_ist, db_timestamp_now, validate_word_limit
-from utils.record_ids import build_record_id, next_complaint_suffix
+from utils.record_ids import next_complaint_id
 from db.db_manager import db_manager
 from db.models.helpdesk import Complaints
 from db.validators.comp_help import QueryType
@@ -48,8 +48,7 @@ async def raise_complaint(
         staff_id = user["staff_id"]
         now = now_ist()
         created_on = db_timestamp_now()
-        complaint_suffix = await next_complaint_suffix()
-        complaint_id = build_record_id(staff_id, complaint_suffix)
+        complaint_id = await next_complaint_id(staff_id)
         file_paths = await upload_files(complaint_id, "user", files)
 
         json_data = {

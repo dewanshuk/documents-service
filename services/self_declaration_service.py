@@ -13,7 +13,7 @@ from db.models.helpdesk import (
 from db.validators.comp_help import validate_coi_form
 from storage.storage_ops import init_json, load_json, upload_files
 from utils.helpers import db_timestamp_now, now_ist
-from utils.record_ids import build_record_id, new_suffix, resolve_record
+from utils.record_ids import next_self_decl_id, resolve_record
 
 SELF_DECLARATION_TYPES = frozenset({"cobce", "coi", "r518"})
 
@@ -95,7 +95,7 @@ async def _submit_cobce_record(
     files: list[UploadFile],
     attach_files: bool,
 ) -> str:
-    record_id = build_record_id(staff_id, new_suffix())
+    record_id = await next_self_decl_id(staff_id)
     nature = row["nature_of_violation"]
     person = row.get("person_responsible", staff_id)
     person_details = {"name": person}
@@ -187,7 +187,7 @@ async def _save_cobce(
                 },
             )
         else:
-            draft_record_id = build_record_id(staff_id, new_suffix())
+            draft_record_id = await next_self_decl_id(staff_id)
             await db_manager.create(
                 COBCEDeclarations,
                 {
@@ -275,7 +275,7 @@ async def _save_coi(
             {"FormData": form_data, "SubType": sub_type},
         )
     else:
-        record_id = build_record_id(staff_id, new_suffix())
+        record_id = await next_self_decl_id(staff_id)
         await db_manager.create(
             COIDeclarations,
             {

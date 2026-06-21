@@ -2,9 +2,9 @@ import traceback
 
 from fastapi import UploadFile, File, Form, APIRouter, Depends
 from typing import List
-from uuid import uuid4
 
 from utils.deps import get_current_user
+from utils.record_ids import next_query_id
 from db.db_manager import db_manager
 from db.models.helpdesk import ComplianceQuery, COBCEDeclarations, COIDeclarations
 from db.validators.comp_help import QueryType
@@ -61,7 +61,7 @@ async def raise_query(
                 {"error": str(e)},
             )
 
-        query_id = f"QRY-{uuid4()}"
+        query_id = await next_query_id()
         now = now_ist()
         created_on = db_timestamp_now()
 

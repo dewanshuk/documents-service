@@ -65,6 +65,7 @@ class AnnualDeclaration(Base):
     )
 
     id = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    reference_id = mapped_column(String(20), nullable=True, unique=True)
     declaration_name = mapped_column(String(20), nullable=False)
     financial_year = mapped_column(String(7), nullable=False)
     assigned_date = mapped_column(Date, nullable=False)

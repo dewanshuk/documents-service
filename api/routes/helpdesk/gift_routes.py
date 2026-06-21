@@ -3,7 +3,7 @@ from typing import List
 
 from utils.deps import get_current_user
 from utils.helpers import now_ist, db_timestamp_now
-from utils.record_ids import new_suffix, build_record_id
+from utils.record_ids import next_gift_id
 from db.db_manager import db_manager
 from db.models.helpdesk import GiftDeclarations
 from storage.storage_ops import upload_files, init_json
@@ -51,7 +51,7 @@ async def raise_gift(
             )
 
         staff_id = user["staff_id"]
-        gift_id = build_record_id(staff_id, new_suffix())
+        gift_id = await next_gift_id()
         now = now_ist()
         created_on = db_timestamp_now()
         file_paths = await upload_files(gift_id, "user", files)

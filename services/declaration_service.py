@@ -16,7 +16,10 @@ from db.models import (
 )
 from db.models.helpdesk import COBCEDeclarations, COIDeclarations
 from utils.helpers import db_timestamp_now, now_ist
-from utils.record_ids import new_suffix, build_record_id
+from utils.record_ids import (
+    build_annual_user_status_id,
+    next_self_decl_id,
+)
 from storage.storage_ops import init_json
 from db.validators import AnnualDeclarationFilters
 from api.routes.annual_dec.question_config import (
@@ -152,6 +155,12 @@ async def save_user_declaration(
         if not declaration:
             raise ValueError("Declaration not found")
         _ensure_declaration_accessible(declaration)
+        if not declaration.file_path:
+            raise ValueError(
+                "Declaration template has not been uploaded yet"
+            )
+        if not declaration.reference_id:
+            raise ValueError("Declaration cycle is not ready (missing reference id)")
 
         decl_name = as_declaration_name(declaration.declaration_name)
         question_config = get_question_config(decl_name)
@@ -165,9 +174,12 @@ async def save_user_declaration(
         status_record = (await session.execute(stmt)).scalar_one_or_none()
         is_new = status_record is None
 
+        if status_record and status_record.notify is False and status_record.status == "not_started":
+            raise ValueError("You are not required to complete this declaration")
+
         if is_new:
             status_record = UserDeclarationStatus(
-                id=build_record_id(staff_id, str(declaration_id)),
+                id=build_annual_user_status_id(staff_id, declaration.reference_id),
                 declaration_id=declaration_id,
                 staff_id=staff_id,
                 status="draft",
@@ -214,6 +226,7 @@ async def save_user_declaration(
 
         return {
             "id": str(status_record.id),
+            "reference_id": declaration.reference_id,
             "status": status_record.status,
             "has_conflicts": status_record.has_conflicts,
             "created_self_declarations": created_self_declarations,
@@ -274,6 +287,7 @@ async def list_declarations(
         items = [
             {
                 "declaration_id": str(decl.id),
+                "reference_id": decl.reference_id,
                 "declaration_name": as_declaration_name(decl.declaration_name),
                 "financial_year": decl.financial_year,
                 "assigned_date": decl.assigned_date.isoformat(),
@@ -321,8 +335,15 @@ async def get_declaration_user_responses(
         question_config = get_question_config(decl_name)
 
         if not status_record:
+            virtual_id = (
+                build_annual_user_status_id(staff_id, declaration.reference_id)
+                if declaration.reference_id
+                else None
+            )
             return {
                 "declaration_id": str(declaration_id),
+                "reference_id": declaration.reference_id,
+                "user_status_id": virtual_id,
                 "declaration_name": decl_name,
                 "financial_year": declaration.financial_year,
                 "staff_id": staff_id,
@@ -346,6 +367,8 @@ async def get_declaration_user_responses(
 
         return {
             "declaration_id": str(declaration_id),
+            "reference_id": declaration.reference_id,
+            "user_status_id": status_record.id,
             "declaration_name": decl_name,
             "financial_year": declaration.financial_year,
             "staff_id": staff_id,
@@ -438,7 +461,7 @@ async def _auto_create_self_declarations(
                     })
                     continue
 
-                record_id = build_record_id(staff_id, new_suffix())
+                record_id = await next_self_decl_id(staff_id)
                 nature = detail.get("nature_of_violation") or detail.get(
                     "description", ""
                 )
@@ -491,7 +514,7 @@ async def _auto_create_self_declarations(
                     })
                     continue
 
-                record_id = build_record_id(staff_id, new_suffix())
+                record_id = await next_self_decl_id(staff_id)
                 form_data = _map_annual_coi_detail(qid, detail, decl_name)
                 conv_data = {
                     "subType": sub_type,

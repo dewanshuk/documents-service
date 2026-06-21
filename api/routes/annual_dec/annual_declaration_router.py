@@ -19,6 +19,7 @@ from services.excel_service import generate_declaration_report
 from services.excel_sync_service import sync_pending_declarations
 from storage.storage_ops import upload_bytes
 from utils.deps import get_current_user
+from utils.record_ids import next_annual_cycle_ref
 
 router = APIRouter()
 
@@ -47,9 +48,14 @@ async def create_declaration(
 
         data = payload.model_dump()
         data["declaration_name"] = decl_name
-        await db_manager.create(AnnualDeclaration, data)
+        data["reference_id"] = await next_annual_cycle_ref()
+        created = await db_manager.create(AnnualDeclaration, data)
         return JSONResponse(
-            content={"message": "Declaration record created successfully"},
+            content={
+                "message": "Declaration record created successfully",
+                "reference_id": created.reference_id,
+                "declaration_id": str(created.id),
+            },
             status_code=201,
         )
     except HTTPException:

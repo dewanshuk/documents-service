@@ -256,8 +256,16 @@ async def init_db(Base):
         await conn.execute(text("CREATE SCHEMA IF NOT EXISTS compliance"))
         await conn.execute(
             text(
-                "CREATE SEQUENCE IF NOT EXISTS compliance.complaint_id_seq "
-                "START 1 INCREMENT 1"
+                "ALTER TABLE annual_declarations.annual_declarations "
+                "ADD COLUMN IF NOT EXISTS reference_id VARCHAR(20)"
+            )
+        )
+        await conn.execute(
+            text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS "
+                "uq_annual_declarations_reference_id "
+                "ON annual_declarations.annual_declarations (reference_id) "
+                "WHERE reference_id IS NOT NULL"
             )
         )
         await conn.execute(text("SET search_path TO compliance, public;"))

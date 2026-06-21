@@ -1,7 +1,6 @@
-"""Composite record IDs: {staff_id}-{suffix} stored as the DB primary key."""
+"""Human-readable reference IDs backed by PostgreSQL sequences (multi-pod safe)."""
 
-from typing import Union
-from uuid import uuid4
+from datetime import datetime
 
 from sqlalchemy import text
 
@@ -15,8 +14,6 @@ from db.models.helpdesk import (
     R518Declarations,
 )
 
-DbId = Union[str, int]
-
 MODEL_BY_TYPE = {
     "query": ComplianceQuery,
     "gift": GiftDeclarations,
@@ -26,43 +23,144 @@ MODEL_BY_TYPE = {
     "r518": R518Declarations,
 }
 
+SELF_DECL_MODELS = [
+    ("cobce", COBCEDeclarations),
+    ("coi", COIDeclarations),
+    ("r518", R518Declarations),
+]
+
 RECORD_ID_SEP = "-"
 MAX_RECORD_ID_LEN = 80
 
+# Self-decl suffix = YYYY (4) + sequence (6). Annual user ids use a shorter numeric ref.
+SELF_DECL_SUFFIX_LEN = 10
 
-def new_suffix() -> str:
-    return str(uuid4())
+
+def current_year() -> int:
+    return datetime.now().year
 
 
-def build_record_id(staff_id: str, suffix: Union[str, int]) -> str:
-    """Build composite id stored in DB, e.g. STAFF001-0001 or STAFF001-<uuid>."""
-    if isinstance(suffix, int):
-        return f"{staff_id}{RECORD_ID_SEP}{suffix:04d}"
-    return f"{staff_id}{RECORD_ID_SEP}{suffix}"
+def year_from_financial_year(financial_year: str) -> int:
+    """Extract calendar year from values like '2025-26' or '2026'."""
+    return int(str(financial_year)[:4])
 
 
 def parse_record_id(record_id: str) -> tuple[str, str]:
-    """Split STAFF001-<suffix> into (staff_id, suffix). Suffix may contain hyphens (uuid)."""
+    """Split STAFF001-<suffix> on the first hyphen."""
     staff_id, _, suffix = record_id.partition(RECORD_ID_SEP)
     if not staff_id or not suffix:
         raise ValueError(f"Invalid record id: {record_id}")
     return staff_id, suffix
 
 
-async def next_complaint_suffix() -> int:
+def build_annual_user_status_id(staff_id: str, reference_id: str) -> str:
+    """Per-user annual declaration id, e.g. STAFF001-123."""
+    return f"{staff_id}{RECORD_ID_SEP}{reference_id}"
+
+
+async def _next_sequence_value(schema: str, seq_key: str) -> int:
+    """
+    Atomically create sequence if missing and return next value.
+    Safe across concurrent requests and application instances.
+    """
+    full_name = f"{schema}.{seq_key}"
     async with get_session() as session:
-        result = await session.execute(
-            text("SELECT nextval('compliance.complaint_id_seq')")
+        await session.execute(
+            text(
+                f"CREATE SEQUENCE IF NOT EXISTS {full_name} "
+                "START 1 INCREMENT 1 NO MAXVALUE"
+            )
         )
-        return int(result.scalar_one())
+        result = await session.execute(text(f"SELECT nextval('{full_name}')"))
+        value = int(result.scalar_one())
+        await session.commit()
+        return value
+
+
+async def next_query_id(year: int | None = None) -> str:
+    year = year or current_year()
+    seq = await _next_sequence_value("compliance", f"seq_qry_{year}")
+    return f"QRY-{year}-{seq:06d}"
+
+
+async def next_complaint_id(staff_id: str, year: int | None = None) -> str:
+    year = year or current_year()
+    seq = await _next_sequence_value("compliance", f"seq_cmp_{year}")
+    return f"CMP{staff_id}-{seq:06d}"
+
+
+async def next_gift_id(year: int | None = None) -> str:
+    year = year or current_year()
+    seq = await _next_sequence_value("compliance", f"seq_gft_{year}")
+    return f"GFT{year}{seq:06d}"
+
+
+async def next_self_decl_id(staff_id: str, year: int | None = None) -> str:
+    year = year or current_year()
+    seq = await _next_sequence_value("compliance", f"seq_sd_{year}")
+    return f"{staff_id}-{year}{seq:06d}"
+
+
+async def next_annual_cycle_ref() -> str:
+    """Admin cycle id, e.g. 1, 123 — shared by all users in that cycle."""
+    seq = await _next_sequence_value("annual_declarations", "seq_ad_cycle")
+    return str(seq)
+
+
+def _is_annual_user_status_id(record_id: str) -> bool:
+    if RECORD_ID_SEP not in record_id:
+        return False
+    try:
+        _, suffix = parse_record_id(record_id)
+    except ValueError:
+        return False
+    return suffix.isdigit() and len(suffix) != SELF_DECL_SUFFIX_LEN
+
+
+def _is_self_decl_id(record_id: str) -> bool:
+    if RECORD_ID_SEP not in record_id:
+        return False
+    try:
+        _, suffix = parse_record_id(record_id)
+    except ValueError:
+        return False
+    return len(suffix) == SELF_DECL_SUFFIX_LEN and suffix.isdigit()
 
 
 async def resolve_record(record_id: str) -> tuple[type, str, str]:
-    """Find model by composite DB primary key."""
+    """Find model by human-readable DB primary key."""
     from db.db_manager import db_manager
+    from db.models.annual_dec import UserDeclarationStatus
+
+    if record_id.startswith("QRY-"):
+        record = await db_manager.get(ComplianceQuery, record_id)
+        if record:
+            return ComplianceQuery, "query", record_id
+
+    if record_id.startswith("CMP"):
+        record = await db_manager.get(Complaints, record_id)
+        if record:
+            return Complaints, "complaint", record_id
+
+    if record_id.startswith("GFT"):
+        record = await db_manager.get(GiftDeclarations, record_id)
+        if record:
+            return GiftDeclarations, "gift", record_id
+
+    if _is_annual_user_status_id(record_id):
+        record = await db_manager.get(UserDeclarationStatus, record_id)
+        if record:
+            return UserDeclarationStatus, "annual_declaration", record_id
+
+    if _is_self_decl_id(record_id):
+        for record_type, model in SELF_DECL_MODELS:
+            record = await db_manager.get(model, record_id)
+            if record:
+                return model, record_type, record_id
 
     for record_type, model in MODEL_BY_TYPE.items():
         record = await db_manager.get(model, record_id)
         if record:
             return model, record_type, record_id
+
     raise ValueError(f"Record not found: {record_id}")

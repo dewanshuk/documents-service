@@ -17,7 +17,7 @@ from db.models.annual_dec import (
     User,
     UserDeclarationStatus,
 )
-from utils.record_ids import build_record_id
+from utils.record_ids import build_annual_user_status_id
 from db.models.annual_dec import as_declaration_name
 
 SELF_DECL_DUE_DAYS = 7
@@ -185,6 +185,9 @@ async def _collect_annual_declarations(session, staff_id, is_admin, tab) -> list
                     items.append(item)
     else:
         for decl in declarations:
+            if not decl.file_path:
+                continue
+
             status_stmt = select(UserDeclarationStatus).where(
                 and_(
                     UserDeclarationStatus.declaration_id == decl.id,
@@ -192,6 +195,9 @@ async def _collect_annual_declarations(session, staff_id, is_admin, tab) -> list
                 )
             )
             uds = (await session.execute(status_stmt)).scalar_one_or_none()
+
+            if uds is not None and uds.notify is False:
+                continue
 
             status = uds.status if uds else "Pending"
             submitted = uds.submitted_at if uds else None
@@ -226,14 +232,15 @@ def _build_annual_item(
     response_status = _response_status(due, overall)
 
     request_id = user_status_id
-    if not request_id and staff_id:
-        request_id = build_record_id(staff_id, str(decl.id))
+    if not request_id and staff_id and decl.reference_id:
+        request_id = build_annual_user_status_id(staff_id, decl.reference_id)
     elif not request_id:
-        request_id = str(decl.id)
+        request_id = decl.reference_id or str(decl.id)
 
     return {
         "request_id": request_id,
         "declaration_id": str(decl.id),
+        "reference_id": decl.reference_id,
         "staff_id": staff_id,
         "type": "Annual Declaration",
         "sub_type": as_declaration_name(decl.declaration_name),
