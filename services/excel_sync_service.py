@@ -9,7 +9,6 @@ from db.db_manager import get_session
 from db.models import AnnualDeclaration, UserDeclarationStatus, SyncStatus
 from utils.record_ids import build_annual_user_status_id
 from services.excel_service import _header_index_map, _parse_yes_no, parse_excel_counts
-from storage.storage_ops import download_to_stream
 
 BATCH_SIZE = 500
 
@@ -35,17 +34,8 @@ def _is_pending_row(row, status_col: int | None) -> bool:
     return str(row[status_col] or "").strip().lower() != "completed"
 
 
-async def _set_sync_status(declaration_id: UUID, sync_status: SyncStatus) -> None:
-    async with get_session() as session:
-        declaration = await session.get(AnnualDeclaration, declaration_id)
-        if declaration:
-            declaration.sync_status = sync_status
-            await session.commit()
-
-
-async def _process_declaration(declaration_id: UUID, file_path: str) -> dict:
-    file_stream = await download_to_stream(file_path)
-    file_bytes = file_stream.read()
+async def process_declaration_excel(declaration_id: UUID, file_bytes: bytes) -> dict:
+    """Parse Excel bytes and upsert UserDeclarationStatus rows (notify yes/no)."""
     col_map, data_rows = await asyncio.to_thread(_iter_excel_rows, file_bytes)
 
     staff_col = col_map.get("Staff ID")
@@ -154,50 +144,4 @@ async def _process_declaration(declaration_id: UUID, file_path: str) -> dict:
         "pending_count": pending,
         "total_count": total,
         "excel_pending_status": excel_pending_status,
-    }
-
-
-async def sync_pending_declarations() -> dict:
-    """Process declarations where sync_status is PENDING and a file is uploaded."""
-
-    async with get_session() as session:
-        declarations = (
-            await session.execute(
-                select(AnnualDeclaration).where(
-                    and_(
-                        AnnualDeclaration.sync_status == SyncStatus.PENDING,
-                        AnnualDeclaration.file_path.isnot(None),
-                    )
-                )
-            )
-        ).scalars().all()
-
-    if not declarations:
-        return {
-            "message": "No declarations with sync_status PENDING to process",
-            "items": [],
-            "errors": [],
-        }
-
-    results = []
-    errors = []
-
-    for decl in declarations:
-        try:
-            result = await _process_declaration(decl.id, decl.file_path)
-            results.append(result)
-        except Exception as exc:
-            await _set_sync_status(decl.id, SyncStatus.FAILED)
-            errors.append({
-                "declaration_id": str(decl.id),
-                "sync_status": SyncStatus.FAILED.value,
-                "error": str(exc),
-            })
-
-    return {
-        "message": "Sync completed",
-        "synced": len(results),
-        "failed": len(errors),
-        "items": results,
-        "errors": errors,
     }

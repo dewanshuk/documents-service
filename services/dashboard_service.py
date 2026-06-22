@@ -152,9 +152,9 @@ def _compute_summary(items: list[dict]) -> dict:
 async def _collect_annual_declarations(session, staff_id, is_admin, tab) -> list[dict]:
     """
     For each active annual declaration:
-    - If user has a UserDeclarationStatus row, return its actual status.
-    - If not, return a virtual 'Pending' row (no DB row created).
-    Admin sees all users' statuses; user sees only their own.
+    - If user has a UserDeclarationStatus row with notify=True, return its status.
+    - Otherwise the user sees nothing (no virtual Pending row).
+    Admin sees all users' statuses; user sees only their own notify=yes rows.
     """
     items = []
 
@@ -185,9 +185,6 @@ async def _collect_annual_declarations(session, staff_id, is_admin, tab) -> list
                     items.append(item)
     else:
         for decl in declarations:
-            if not decl.file_path:
-                continue
-
             status_stmt = select(UserDeclarationStatus).where(
                 and_(
                     UserDeclarationStatus.declaration_id == decl.id,
@@ -196,13 +193,12 @@ async def _collect_annual_declarations(session, staff_id, is_admin, tab) -> list
             )
             uds = (await session.execute(status_stmt)).scalar_one_or_none()
 
-            if uds is not None and uds.notify is False:
+            if uds is None or not uds.notify:
                 continue
 
-            status = uds.status if uds else "Pending"
-            submitted = uds.submitted_at if uds else None
-            user_status_id = uds.id if uds else None
-            item = _build_annual_item(decl, status, staff_id, submitted, user_status_id)
+            item = _build_annual_item(
+                decl, uds.status, staff_id, uds.submitted_at, uds.id
+            )
             if _matches_tab(item, tab):
                 items.append(item)
 

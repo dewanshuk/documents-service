@@ -4,7 +4,7 @@ from fastapi.responses import StreamingResponse, JSONResponse
 from datetime import datetime
 
 from db.db_manager import db_manager
-from db.models import AnnualDeclaration, DeclarationType, SyncStatus, as_declaration_name
+from db.models import AnnualDeclaration, DeclarationType, as_declaration_name
 from db.validators import (
     AnnualDeclarationCreate,
     AnnualDeclarationFilters,
@@ -16,7 +16,7 @@ from services.declaration_service import (
     get_declaration_user_responses,
 )
 from services.excel_service import generate_declaration_report
-from services.excel_sync_service import sync_pending_declarations
+from services.excel_sync_service import process_declaration_excel
 from storage.storage_ops import upload_bytes
 from utils.deps import get_current_user
 from utils.record_ids import next_annual_cycle_ref
@@ -141,6 +141,16 @@ async def upload_declaration_file(
             raise HTTPException(status_code=404, detail="Declaration not found")
 
         file_content = await file.read()
+        try:
+            process_result = await process_declaration_excel(declaration_id, file_content)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Failed to process Excel file: {exc}",
+            ) from exc
+
         blob_name = f"declaration_{declaration_id}_{file.filename}"
         await upload_bytes(blob_name, file_content)
         await db_manager.update(
@@ -150,16 +160,12 @@ async def upload_declaration_file(
                 "file_path": blob_name,
                 "last_uploaded_file_at": datetime.now(),
                 "last_uploaded_by": current_user["staff_id"],
-                "sync_status": SyncStatus.PENDING,
             },
         )
         return JSONResponse(
             content={
-                "message": "File uploaded successfully",
-                "sync_status": SyncStatus.PENDING.value,
-                "pending_count": declaration.pending_count,
-                "total_count": declaration.total_count,
-                "excel_pending_status": declaration.excel_pending_status,
+                "message": "File uploaded and processed successfully",
+                **process_result,
             },
             status_code=201,
         )
@@ -167,18 +173,6 @@ async def upload_declaration_file(
         raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
-
-
-@router.post("/sync-declaration-file")
-async def sync_declaration_file_endpoint(
-    current_user: dict = Depends(get_current_user),
-):
-    """Process all Pending declarations that have an uploaded file."""
-    try:
-        result = await sync_pending_declarations()
-        return JSONResponse(content=result, status_code=200)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/download-declaration-file/{declaration_id}")

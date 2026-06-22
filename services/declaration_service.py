@@ -172,21 +172,14 @@ async def save_user_declaration(
             )
         )
         status_record = (await session.execute(stmt)).scalar_one_or_none()
-        is_new = status_record is None
 
-        if status_record and status_record.notify is False and status_record.status == "not_started":
+        if status_record is None:
             raise ValueError("You are not required to complete this declaration")
 
-        if is_new:
-            status_record = UserDeclarationStatus(
-                id=build_annual_user_status_id(staff_id, declaration.reference_id),
-                declaration_id=declaration_id,
-                staff_id=staff_id,
-                status="draft",
-            )
-            session.add(status_record)
-            await session.flush()
-        elif status_record.status == "completed":
+        if status_record.notify is False and status_record.status == "not_started":
+            raise ValueError("You are not required to complete this declaration")
+
+        if status_record.status == "completed":
             raise ValueError("Declaration already submitted and cannot be edited")
         elif status_record.status == "not_started":
             status_record.status = "draft"

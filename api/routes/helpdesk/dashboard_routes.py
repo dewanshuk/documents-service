@@ -31,7 +31,7 @@ async def _gather_admin_checks(staff_id: str):
 
 @router.get("/dashboard")
 async def dashboard(
-    tab: str = Query("pending", regex="^(pending|all)$"),
+    tab: str = Query("pending", pattern="^(pending|all)$"),
     search: Optional[str] = Query(None, max_length=200),
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=100),
