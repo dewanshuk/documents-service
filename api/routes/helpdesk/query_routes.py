@@ -61,7 +61,7 @@ async def raise_query(
                 {"error": str(e)},
             )
 
-        query_id = await next_query_id()
+        query_id = await next_query_id(user["staff_id"])
         now = now_ist()
         created_on = db_timestamp_now()
 

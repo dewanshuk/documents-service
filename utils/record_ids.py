@@ -32,8 +32,8 @@ SELF_DECL_MODELS = [
 RECORD_ID_SEP = "-"
 MAX_RECORD_ID_LEN = 80
 
-# Self-decl suffix = YYYY (4) + sequence (6). Annual user ids use a shorter numeric ref.
-SELF_DECL_SUFFIX_LEN = 10
+# Self-decl suffix = 6-digit sequence. Annual user ids use a shorter cycle ref.
+SELF_DECL_SUFFIX_LEN = 6
 
 
 def current_year() -> int:
@@ -77,10 +77,10 @@ async def _next_sequence_value(schema: str, seq_key: str) -> int:
         return value
 
 
-async def next_query_id(year: int | None = None) -> str:
+async def next_query_id(staff_id: str, year: int | None = None) -> str:
     year = year or current_year()
     seq = await _next_sequence_value("compliance", f"seq_qry_{year}")
-    return f"QRY-{year}-{seq:06d}"
+    return f"QRY{staff_id}-{seq:06d}"
 
 
 async def next_complaint_id(staff_id: str, year: int | None = None) -> str:
@@ -89,16 +89,16 @@ async def next_complaint_id(staff_id: str, year: int | None = None) -> str:
     return f"CMP{staff_id}-{seq:06d}"
 
 
-async def next_gift_id(year: int | None = None) -> str:
+async def next_gift_id(staff_id: str, year: int | None = None) -> str:
     year = year or current_year()
     seq = await _next_sequence_value("compliance", f"seq_gft_{year}")
-    return f"GFT{year}{seq:06d}"
+    return f"GFT{staff_id}-{seq:06d}"
 
 
 async def next_self_decl_id(staff_id: str, year: int | None = None) -> str:
     year = year or current_year()
     seq = await _next_sequence_value("compliance", f"seq_sd_{year}")
-    return f"{staff_id}-{year}{seq:06d}"
+    return f"{staff_id}-{seq:06d}"
 
 
 async def next_annual_cycle_ref() -> str:
@@ -132,7 +132,7 @@ async def resolve_record(record_id: str) -> tuple[type, str, str]:
     from db.db_manager import db_manager
     from db.models.annual_dec import UserDeclarationStatus
 
-    if record_id.startswith("QRY-"):
+    if record_id.startswith("QRY"):
         record = await db_manager.get(ComplianceQuery, record_id)
         if record:
             return ComplianceQuery, "query", record_id

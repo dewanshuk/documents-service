@@ -51,7 +51,7 @@ async def raise_gift(
             )
 
         staff_id = user["staff_id"]
-        gift_id = await next_gift_id()
+        gift_id = await next_gift_id(staff_id)
         now = now_ist()
         created_on = db_timestamp_now()
         file_paths = await upload_files(gift_id, "user", files)
