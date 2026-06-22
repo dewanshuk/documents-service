@@ -3,11 +3,11 @@ from io import BytesIO
 from uuid import UUID
 
 from openpyxl import load_workbook
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, delete
 
 from db.db_manager import get_session
 from db.models import AnnualDeclaration, UserDeclarationStatus, SyncStatus
-from utils.record_ids import build_record_id
+from utils.record_ids import build_annual_user_status_id
 from services.excel_service import _header_index_map, _parse_yes_no, parse_excel_counts
 from storage.storage_ops import download_to_stream
 
@@ -55,8 +55,25 @@ async def _process_declaration(declaration_id: UUID, file_path: str) -> dict:
     if staff_col is None:
         raise ValueError("Excel must contain a 'Staff ID' column")
 
+    async with get_session() as session:
+        declaration = await session.get(AnnualDeclaration, declaration_id)
+        if not declaration or not declaration.reference_id:
+            raise ValueError(
+                "Declaration cycle is missing reference_id; recreate the cycle"
+            )
+        cycle_ref = declaration.reference_id
+
     pending_rows = [row for row in data_rows if _is_pending_row(row, status_col)]
+
+    # Collect all staff IDs present in this Excel upload.
+    excel_staff_ids: set[str] = set()
+    for row in pending_rows:
+        sid = row[staff_col]
+        if sid:
+            excel_staff_ids.add(str(sid))
+
     processed = 0
+    excluded = 0
 
     for batch_start in range(0, len(pending_rows), BATCH_SIZE):
         batch = pending_rows[batch_start : batch_start + BATCH_SIZE]
@@ -87,7 +104,7 @@ async def _process_declaration(declaration_id: UUID, file_path: str) -> dict:
                 else:
                     session.add(
                         UserDeclarationStatus(
-                            id=build_record_id(str(staff_id), str(declaration_id)),
+                            id=build_annual_user_status_id(str(staff_id), cycle_ref),
                             declaration_id=declaration_id,
                             staff_id=str(staff_id),
                             status="not_started",
@@ -95,8 +112,25 @@ async def _process_declaration(declaration_id: UUID, file_path: str) -> dict:
                         )
                     )
 
-                processed += 1
+                if notify_val:
+                    processed += 1
+                else:
+                    excluded += 1
 
+            await session.commit()
+
+    # Delete not_started records for staff IDs no longer in the Excel.
+    if excel_staff_ids:
+        async with get_session() as session:
+            await session.execute(
+                delete(UserDeclarationStatus).where(
+                    and_(
+                        UserDeclarationStatus.declaration_id == declaration_id,
+                        UserDeclarationStatus.status == "not_started",
+                        UserDeclarationStatus.staff_id.not_in(excel_staff_ids),
+                    )
+                )
+            )
             await session.commit()
 
     pending, total, excel_pending_status = await asyncio.to_thread(
@@ -113,8 +147,10 @@ async def _process_declaration(declaration_id: UUID, file_path: str) -> dict:
 
     return {
         "declaration_id": str(declaration_id),
+        "reference_id": cycle_ref,
         "sync_status": SyncStatus.COMPLETED.value,
         "processed": processed,
+        "excluded_users": excluded,
         "pending_count": pending,
         "total_count": total,
         "excel_pending_status": excel_pending_status,

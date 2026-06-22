@@ -335,33 +335,10 @@ async def get_declaration_user_responses(
         question_config = get_question_config(decl_name)
 
         if not status_record:
-            virtual_id = (
-                build_annual_user_status_id(staff_id, declaration.reference_id)
-                if declaration.reference_id
-                else None
-            )
-            return {
-                "declaration_id": str(declaration_id),
-                "reference_id": declaration.reference_id,
-                "user_status_id": virtual_id,
-                "declaration_name": decl_name,
-                "financial_year": declaration.financial_year,
-                "staff_id": staff_id,
-                "name": user.username if user else None,
-                "email": user.email if user else None,
-                "department": user.department if user else None,
-                "declaration_status": "not_started",
-                "has_conflicts": False,
-                "submitted_at": None,
-                "responses": [
-                    {
-                        "question_id": qid,
-                        "response": None,
-                        "declaration_details": None,
-                    }
-                    for qid in question_config
-                ],
-            }
+            raise ValueError("No declaration found for your ID")
+
+        if status_record.notify is False and status_record.status == "not_started":
+            raise ValueError("You are not required to complete this declaration")
 
         prefilled = await _get_prefill_data(session, staff_id, decl_name)
 
