@@ -151,10 +151,10 @@ def _compute_summary(items: list[dict]) -> dict:
 
 async def _collect_annual_declarations(session, staff_id, is_admin, tab) -> list[dict]:
     """
-    For each active annual declaration:
-    - If user has a UserDeclarationStatus row with notify=True, return its status.
-    - Otherwise the user sees nothing (no virtual Pending row).
-    Admin sees all users' statuses; user sees only their own notify=yes rows.
+    Annual declarations are always scoped to the logged-in user (admin included).
+    Shown only when Excel has been processed with notify=True.
+    Pending tab excludes completed; all tab includes them.
+    Admin visibility into other users' submissions is via self-declarations.
     """
     items = []
 
@@ -164,43 +164,23 @@ async def _collect_annual_declarations(session, staff_id, is_admin, tab) -> list
     )
     declarations = (await session.execute(decl_stmt)).scalars().all()
 
-    if is_admin:
-        for decl in declarations:
-            status_stmt = (
-                select(UserDeclarationStatus)
-                .where(UserDeclarationStatus.declaration_id == decl.id)
+    for decl in declarations:
+        status_stmt = select(UserDeclarationStatus).where(
+            and_(
+                UserDeclarationStatus.declaration_id == decl.id,
+                UserDeclarationStatus.staff_id == staff_id,
             )
-            statuses = (await session.execute(status_stmt)).scalars().all()
+        )
+        uds = (await session.execute(status_stmt)).scalar_one_or_none()
 
-            if statuses:
-                for uds in statuses:
-                    item = _build_annual_item(
-                        decl, uds.status, uds.staff_id, uds.submitted_at, uds.id
-                    )
-                    if _matches_tab(item, tab):
-                        items.append(item)
-            else:
-                item = _build_annual_item(decl, "Pending", None, None, None)
-                if _matches_tab(item, tab):
-                    items.append(item)
-    else:
-        for decl in declarations:
-            status_stmt = select(UserDeclarationStatus).where(
-                and_(
-                    UserDeclarationStatus.declaration_id == decl.id,
-                    UserDeclarationStatus.staff_id == staff_id,
-                )
-            )
-            uds = (await session.execute(status_stmt)).scalar_one_or_none()
+        if uds is None or not uds.notify:
+            continue
 
-            if uds is None or not uds.notify:
-                continue
-
-            item = _build_annual_item(
-                decl, uds.status, staff_id, uds.submitted_at, uds.id
-            )
-            if _matches_tab(item, tab):
-                items.append(item)
+        item = _build_annual_item(
+            decl, uds.status, staff_id, uds.submitted_at, uds.id
+        )
+        if _matches_tab(item, tab):
+            items.append(item)
 
     return items
 
@@ -231,11 +211,10 @@ def _build_annual_item(
     if not request_id and staff_id and decl.reference_id:
         request_id = build_annual_user_status_id(staff_id, decl.reference_id)
     elif not request_id:
-        request_id = decl.reference_id or str(decl.id)
+        request_id = decl.reference_id
 
     return {
         "request_id": request_id,
-        "declaration_id": str(decl.id),
         "reference_id": decl.reference_id,
         "staff_id": staff_id,
         "type": "Annual Declaration",

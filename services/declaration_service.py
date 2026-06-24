@@ -1,3 +1,5 @@
+import hashlib
+import json
 from datetime import date, datetime
 from enum import Enum
 from uuid import UUID
@@ -16,10 +18,14 @@ from db.models import (
 )
 from db.models.helpdesk import COBCEDeclarations, COIDeclarations
 from utils.helpers import db_timestamp_now, now_ist
+from db.redis_cache import cache_get, cache_set, cache_delete_pattern
 from utils.record_ids import (
     build_annual_user_status_id,
     next_self_decl_id,
 )
+
+LIST_DECLARATIONS_CACHE_PREFIX = "declarations:list:"
+LIST_DECLARATIONS_CACHE_TTL = 300
 from storage.storage_ops import init_json
 from db.validators import AnnualDeclarationFilters
 from api.routes.annual_dec.question_config import (
@@ -255,12 +261,69 @@ def _apply_declaration_filters(stmt, filters: AnnualDeclarationFilters):
     return stmt
 
 
+def _list_declarations_cache_key(
+    filters: AnnualDeclarationFilters, page: int, page_size: int
+) -> str:
+    payload = {
+        "filters": filters.model_dump(mode="json"),
+        "page": page,
+        "page_size": page_size,
+    }
+    digest = hashlib.sha256(
+        json.dumps(payload, sort_keys=True, default=str).encode()
+    ).hexdigest()[:16]
+    return f"{LIST_DECLARATIONS_CACHE_PREFIX}{digest}"
+
+
+async def invalidate_declarations_list_cache() -> None:
+    await cache_delete_pattern(LIST_DECLARATIONS_CACHE_PREFIX)
+
+
+async def _count_user_statuses(session, declaration_ids: list[UUID]) -> dict[UUID, dict]:
+    if not declaration_ids:
+        return {}
+
+    rows = (
+        await session.execute(
+            select(
+                UserDeclarationStatus.declaration_id,
+                func.count().filter(UserDeclarationStatus.notify.is_(True)).label(
+                    "total_count"
+                ),
+                func.count()
+                .filter(
+                    and_(
+                        UserDeclarationStatus.notify.is_(True),
+                        UserDeclarationStatus.status != "completed",
+                    )
+                )
+                .label("pending_count"),
+            )
+            .where(UserDeclarationStatus.declaration_id.in_(declaration_ids))
+            .group_by(UserDeclarationStatus.declaration_id)
+        )
+    ).all()
+
+    return {
+        row.declaration_id: {
+            "total_count": int(row.total_count or 0),
+            "pending_count": int(row.pending_count or 0),
+        }
+        for row in rows
+    }
+
+
 async def list_declarations(
     filters: AnnualDeclarationFilters,
     page: int = 1,
     page_size: int = 25,
 ) -> dict:
     """Admin-only: list declarations with optional filters and pagination."""
+    cache_key = _list_declarations_cache_key(filters, page, page_size)
+    cached = await cache_get(cache_key)
+    if cached is not None:
+        return cached
+
     async with get_session() as session:
         decl_stmt = select(AnnualDeclaration)
         decl_stmt = _apply_declaration_filters(decl_stmt, filters)
@@ -277,28 +340,37 @@ async def list_declarations(
         )
         declarations = (await session.execute(decl_stmt)).scalars().all()
 
-        items = [
-            {
-                "declaration_id": str(decl.id),
-                "reference_id": decl.reference_id,
-                "declaration_name": as_declaration_name(decl.declaration_name),
-                "financial_year": decl.financial_year,
-                "assigned_date": decl.assigned_date.isoformat(),
-                "due_date": decl.due_date.isoformat(),
-                "activity_closure_date": decl.activity_closure_date.isoformat(),
-                "status": decl.status,
-                "pending_count": decl.pending_count,
-                "total_count": decl.total_count,
-            }
-            for decl in declarations
-        ]
+        counts_by_id = await _count_user_statuses(
+            session, [decl.id for decl in declarations]
+        )
 
-        return {
+        items = []
+        for decl in declarations:
+            counts = counts_by_id.get(
+                decl.id, {"pending_count": 0, "total_count": 0}
+            )
+            items.append(
+                {
+                    "reference_id": decl.reference_id,
+                    "declaration_name": as_declaration_name(decl.declaration_name),
+                    "financial_year": decl.financial_year,
+                    "assigned_date": decl.assigned_date.isoformat(),
+                    "due_date": decl.due_date.isoformat(),
+                    "activity_closure_date": decl.activity_closure_date.isoformat(),
+                    "status": decl.status,
+                    "pending_count": counts["pending_count"],
+                    "total_count": counts["total_count"],
+                }
+            )
+
+        result = {
             "items": items,
             "total": total or 0,
             "page": page,
             "page_size": page_size,
         }
+        await cache_set(cache_key, result, ttl=LIST_DECLARATIONS_CACHE_TTL)
+        return result
 
 
 async def get_declaration_user_responses(
@@ -336,7 +408,6 @@ async def get_declaration_user_responses(
         prefilled = await _get_prefill_data(session, staff_id, decl_name)
 
         return {
-            "declaration_id": str(declaration_id),
             "reference_id": declaration.reference_id,
             "user_status_id": status_record.id,
             "declaration_name": decl_name,

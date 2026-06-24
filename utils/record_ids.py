@@ -53,9 +53,9 @@ def parse_record_id(record_id: str) -> tuple[str, str]:
     return staff_id, suffix
 
 
-def build_annual_user_status_id(staff_id: str, reference_id: str) -> str:
+def build_annual_user_status_id(staff_id: str, annual_declaration_id: str) -> str:
     """Per-user annual declaration id, e.g. STAFF001-123."""
-    return f"{staff_id}{RECORD_ID_SEP}{reference_id}"
+    return f"{staff_id}{RECORD_ID_SEP}{annual_declaration_id}"
 
 
 async def _next_sequence_value(schema: str, seq_key: str) -> int:

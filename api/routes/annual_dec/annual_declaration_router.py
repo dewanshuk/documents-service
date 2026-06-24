@@ -14,10 +14,14 @@ from services.declaration_service import (
     save_user_declaration,
     list_declarations,
     get_declaration_user_responses,
+    invalidate_declarations_list_cache,
 )
-from services.excel_service import generate_declaration_report
 from services.excel_sync_service import process_declaration_excel
-from storage.storage_ops import upload_bytes
+from storage.storage_ops import (
+    upload_bytes,
+    download_to_stream,
+    ANNUAL_DECLARATION_BLOB_NAME,
+)
 from utils.deps import get_current_user
 from utils.record_ids import next_annual_cycle_ref
 
@@ -50,11 +54,11 @@ async def create_declaration(
         data["declaration_name"] = decl_name
         data["reference_id"] = await next_annual_cycle_ref()
         created = await db_manager.create(AnnualDeclaration, data)
+        await invalidate_declarations_list_cache()
         return JSONResponse(
             content={
                 "message": "Declaration record created successfully",
                 "reference_id": created.reference_id,
-                "declaration_id": str(created.id),
             },
             status_code=201,
         )
@@ -151,7 +155,7 @@ async def upload_declaration_file(
                 detail=f"Failed to process Excel file: {exc}",
             ) from exc
 
-        blob_name = f"declaration_{declaration_id}_{file.filename}"
+        blob_name = ANNUAL_DECLARATION_BLOB_NAME
         await upload_bytes(blob_name, file_content)
         await db_manager.update(
             AnnualDeclaration,
@@ -162,6 +166,7 @@ async def upload_declaration_file(
                 "last_uploaded_by": current_user["staff_id"],
             },
         )
+        await invalidate_declarations_list_cache()
         return JSONResponse(
             content={
                 "message": "File uploaded and processed successfully",
@@ -175,29 +180,24 @@ async def upload_declaration_file(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.get("/download-declaration-file/{declaration_id}")
+@router.get("/download-declaration-file")
 async def download_declaration_file(
-    declaration_id: uuid.UUID,
     current_user: dict = Depends(get_current_user),
 ):
-    """Download Excel built from user_declaration_status + user_declaration_responses."""
-    declaration = await db_manager.get(AnnualDeclaration, declaration_id)
-    if not declaration:
-        raise HTTPException(status_code=404, detail="Declaration not found")
-
+    """Download the annual declaration template file from blob storage."""
     try:
-        report = await generate_declaration_report(declaration_id)
-        decl_name = as_declaration_name(declaration.declaration_name).replace("/", "_")
-        filename = (
-            f"Declaration_Report_{decl_name}_FY_{declaration.financial_year}.xlsx"
-        )
+        stream = await download_to_stream(ANNUAL_DECLARATION_BLOB_NAME)
         return StreamingResponse(
-            report,
+            stream,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+            headers={
+                "Content-Disposition": (
+                    f'attachment; filename="{ANNUAL_DECLARATION_BLOB_NAME}"'
+                )
+            },
         )
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Declaration file not found")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

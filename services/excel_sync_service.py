@@ -8,7 +8,7 @@ from sqlalchemy import select, and_, delete
 from db.db_manager import get_session
 from db.models import AnnualDeclaration, UserDeclarationStatus, SyncStatus
 from utils.record_ids import build_annual_user_status_id
-from services.excel_service import _header_index_map, _parse_yes_no, parse_excel_counts
+from services.excel_service import _header_index_map, _parse_yes_no
 
 BATCH_SIZE = 500
 
@@ -51,7 +51,7 @@ async def process_declaration_excel(declaration_id: UUID, file_bytes: bytes) -> 
             raise ValueError(
                 "Declaration cycle is missing reference_id; recreate the cycle"
             )
-        cycle_ref = declaration.reference_id
+        annual_declaration_id = declaration.reference_id
 
     pending_rows = [row for row in data_rows if _is_pending_row(row, status_col)]
 
@@ -94,7 +94,9 @@ async def process_declaration_excel(declaration_id: UUID, file_bytes: bytes) -> 
                 else:
                     session.add(
                         UserDeclarationStatus(
-                            id=build_annual_user_status_id(str(staff_id), cycle_ref),
+                            id=build_annual_user_status_id(
+                                str(staff_id), annual_declaration_id
+                            ),
                             declaration_id=declaration_id,
                             staff_id=str(staff_id),
                             status="not_started",
@@ -123,25 +125,14 @@ async def process_declaration_excel(declaration_id: UUID, file_bytes: bytes) -> 
             )
             await session.commit()
 
-    pending, total, excel_pending_status = await asyncio.to_thread(
-        parse_excel_counts, file_bytes
-    )
-
     async with get_session() as session:
         declaration = await session.get(AnnualDeclaration, declaration_id)
-        declaration.pending_count = pending
-        declaration.total_count = total
-        declaration.excel_pending_status = excel_pending_status
         declaration.sync_status = SyncStatus.COMPLETED
         await session.commit()
 
     return {
-        "declaration_id": str(declaration_id),
-        "reference_id": cycle_ref,
+        "reference_id": annual_declaration_id,
         "sync_status": SyncStatus.COMPLETED.value,
         "processed": processed,
         "excluded_users": excluded,
-        "pending_count": pending,
-        "total_count": total,
-        "excel_pending_status": excel_pending_status,
     }

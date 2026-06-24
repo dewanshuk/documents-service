@@ -14,6 +14,9 @@ LOCAL_STORAGE_ROOT = Path(
 ).resolve()
 
 COMPLIANCE_PREFIX = "/compliance"
+ANNUAL_DECLARATION_BLOB_NAME = os.getenv(
+    "ANNUAL_DECLARATION_BLOB_NAME", "declaration_template.xlsx"
+)
 
 
 def _blob_path(blob_name: str, container: str = "annual-declarations") -> Path:
