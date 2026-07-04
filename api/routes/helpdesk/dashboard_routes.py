@@ -34,7 +34,7 @@ async def _gather_admin_checks(staff_id: str):
 async def dashboard(
     tab: str = Query("pending", pattern="^(pending|all)$"),
     search: Optional[str] = Query(None, max_length=200),
-    type_filter: Optional[str] = Query(None, alias="type", max_length=100),
+    type_filter: Optional[str] = Query(None, alias="type", max_length=500),
     sub_type: Optional[str] = Query(None, max_length=100),
     response_status: Optional[str] = Query(None, max_length=50),
     overall_status: Optional[str] = Query(None, max_length=50),
@@ -51,6 +51,8 @@ async def dashboard(
 
     - tab=pending: items that need action (non-completed)
     - tab=all: all items including completed
+    - type: comma-separated filter, e.g. type=query,gift,complaint
+      Allowed values: annual_declarations, self_declarations, query, gift, complaint
     - Admin sees all records; regular user sees only their own.
     """
     try:
@@ -103,7 +105,7 @@ async def dashboard(
 async def export_dashboard(
     tab: str = Query("pending", pattern="^(pending|all)$"),
     search: Optional[str] = Query(None, max_length=200),
-    type_filter: Optional[str] = Query(None, alias="type", max_length=100),
+    type_filter: Optional[str] = Query(None, alias="type", max_length=500),
     sub_type: Optional[str] = Query(None, max_length=100),
     response_status: Optional[str] = Query(None, max_length=50),
     overall_status: Optional[str] = Query(None, max_length=50),
@@ -115,6 +117,7 @@ async def export_dashboard(
 ):
     """
     Export dashboard records to xlsx using the same role-scoped filters as /dashboard.
+    Supports comma-separated type filter, e.g. type=query,gift
     """
     try:
         staff_id = user["staff_id"]
