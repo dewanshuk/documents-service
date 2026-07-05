@@ -268,5 +268,27 @@ async def init_db(Base):
                 "WHERE reference_id IS NOT NULL"
             )
         )
+        helpdesk_tables = [
+            "compliance_queries",
+            "gift_declarations",
+            "complaints",
+            "cobce_declarations",
+            "coi_declarations",
+            "r518_declarations",
+        ]
+        for tbl in helpdesk_tables:
+            await conn.execute(text(
+                f"ALTER TABLE compliance.{tbl} "
+                "ADD COLUMN IF NOT EXISTS \"AssignedTo\" VARCHAR(255)"
+            ))
+            await conn.execute(text(
+                f"ALTER TABLE compliance.{tbl} "
+                "ADD COLUMN IF NOT EXISTS \"ClosedBy\" VARCHAR(255)"
+            ))
+            await conn.execute(text(
+                f"ALTER TABLE compliance.{tbl} "
+                "ADD COLUMN IF NOT EXISTS \"LastUpdatedOn\" TIMESTAMPTZ"
+            ))
+
         await conn.execute(text("SET search_path TO compliance, public;"))
         await conn.run_sync(Base.metadata.create_all)

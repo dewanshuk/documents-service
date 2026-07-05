@@ -1,6 +1,8 @@
 from fastapi import APIRouter
 
-router = APIRouter()
+from core.openapi_tags import TAG_HEALTH
+
+router = APIRouter(tags=[TAG_HEALTH])
 
 
 @router.get("/health")

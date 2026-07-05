@@ -3,7 +3,9 @@ from fastapi.responses import JSONResponse
 from .route_utils import log_and_json_response
 from storage.storage_ops import generate_blob_sas_url
 
-router = APIRouter()
+from core.openapi_tags import TAG_COMMON
+
+router = APIRouter(tags=[TAG_COMMON])
 
 # Generic shared endpoints for compliance resources.
 
