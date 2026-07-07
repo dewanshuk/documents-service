@@ -5,29 +5,13 @@ from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from utils.deps import get_current_user
-from utils.authorize import (
-    is_active_cobce_coi_gift_lead,
-    is_active_complaint_lead,
-    is_active_query_lead,
-)
+from utils.authorize import is_helpdesk_admin
 from services.dashboard_service import get_dashboard, get_dashboard_export_file
 from .route_utils import log_and_json_response
 
-router = APIRouter()
+from core.openapi_tags import TAG_COMMON
 
-
-async def _is_any_admin(staff_id: str) -> bool:
-    results = await _gather_admin_checks(staff_id)
-    return any(results)
-
-
-async def _gather_admin_checks(staff_id: str):
-    import asyncio
-    return await asyncio.gather(
-        is_active_query_lead(staff_id),
-        is_active_cobce_coi_gift_lead(staff_id),
-        is_active_complaint_lead(staff_id),
-    )
+router = APIRouter(tags=[TAG_COMMON])
 
 
 @router.get("/dashboard")
@@ -57,7 +41,7 @@ async def dashboard(
     """
     try:
         staff_id = user["staff_id"]
-        is_admin = user.get("is_master_admin", False) or await _is_any_admin(staff_id)
+        is_admin = await is_helpdesk_admin(user)
 
         data = await get_dashboard(
             staff_id=staff_id,
@@ -121,7 +105,7 @@ async def export_dashboard(
     """
     try:
         staff_id = user["staff_id"]
-        is_admin = user.get("is_master_admin", False) or await _is_any_admin(staff_id)
+        is_admin = await is_helpdesk_admin(user)
 
         stream = await get_dashboard_export_file(
             staff_id=staff_id,

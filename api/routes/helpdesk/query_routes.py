@@ -22,10 +22,101 @@ from utils.helpers import (
     now_ist,
 )
 from .route_utils import log_and_json_response
+from core.openapi_tags import TAG_QUERY
 
-router = APIRouter()
+router = APIRouter(tags=[TAG_QUERY])
 
 # Query endpoints for raising, responding, closing, viewing, and downloading query files.
+
+
+@router.get("/query/{query_id}")
+async def view_query(query_id: str, user: dict = Depends(get_current_user)):
+    """Get the details and conversation history for a specific query."""
+    try:
+        try:
+            model = await get_model_by_id(query_id)
+        except ValueError as e:
+            return log_and_json_response(
+                user.get("staff_id"),
+                {"query_id": query_id},
+                "/query/{query_id}",
+                "GET",
+                400,
+                {"error": str(e)},
+            )
+        record = await db_manager.get(model, query_id)
+        if not record:
+            return log_and_json_response(
+                user["staff_id"],
+                {"query_id": query_id},
+                "/query/{query_id}",
+                "GET",
+                404,
+                {"error": "Record Not found"},
+            )
+
+        data = (
+            await read_json(record.ResponseJsonPath)
+            if record.ResponseJsonPath
+            else None
+        )
+
+        if hasattr(record, "QueryId"):
+            record_id = record.QueryId
+        elif hasattr(record, "GiftId"):
+            record_id = record.GiftId
+        elif hasattr(record, "ComplaintId"):
+            record_id = record.ComplaintId
+        elif hasattr(record, "COBCEId"):
+            record_id = record.COBCEId
+        elif hasattr(record, "COIId"):
+            record_id = record.COIId
+        else:
+            record_id = None
+
+        if getattr(record, "Status", None) == "Draft":
+            pending_at_display = "-"
+        elif record.OverallStatus != "Closed":
+            if record.PendingAt == 1:
+                pending_at_display = "Compliance Team"
+            elif record.PendingAt == 0:
+                pending_at_display = record.CreatedBy
+            else:
+                pending_at_display = "-"
+        else:
+            pending_at_display = "-"
+
+        response_body = {
+            "details": {
+                "id": record_id,
+                "status": record.OverallStatus,
+                "pendingAt": pending_at_display,
+                "createdBy": record.CreatedBy,
+                "createdOn": str(record.CreatedOn),
+                "closureDate": str(record.ClosureDate) if record.ClosureDate else None,
+                "workflowStatus": record.Status if hasattr(record, "Status") else None,
+            },
+            "conversation": data,
+        }
+
+        return log_and_json_response(
+            user["staff_id"],
+            {"query_id": query_id},
+            "/query/{query_id}",
+            "GET",
+            200,
+            response_body,
+        )
+    except Exception as e:
+        print(traceback.format_exc())
+        return log_and_json_response(
+            user.get("staff_id"),
+            {"query_id": query_id},
+            "/query/{query_id}",
+            "GET",
+            500,
+            {"error": "Error fetching querys", "details": str(e)},
+        )
 
 
 @router.post("/query")
@@ -421,94 +512,4 @@ async def close_query(
             "POST",
             400,
             {"error": "Error closing query", "details": str(e)},
-        )
-
-
-@router.get("/query/{query_id}")
-async def view_query(query_id: str, user: dict = Depends(get_current_user)):
-    """Get the details and conversation history for a specific query."""
-    try:
-        try:
-            model = await get_model_by_id(query_id)
-        except ValueError as e:
-            return log_and_json_response(
-                user.get("staff_id"),
-                {"query_id": query_id},
-                "/query/{query_id}",
-                "GET",
-                400,
-                {"error": str(e)},
-            )
-        record = await db_manager.get(model, query_id)
-        if not record:
-            return log_and_json_response(
-                user["staff_id"],
-                {"query_id": query_id},
-                "/query/{query_id}",
-                "GET",
-                404,
-                {"error": "Record Not found"},
-            )
-
-        data = (
-            await read_json(record.ResponseJsonPath)
-            if record.ResponseJsonPath
-            else None
-        )
-
-        if hasattr(record, "QueryId"):
-            record_id = record.QueryId
-        elif hasattr(record, "GiftId"):
-            record_id = record.GiftId
-        elif hasattr(record, "ComplaintId"):
-            record_id = record.ComplaintId
-        elif hasattr(record, "COBCEId"):
-            record_id = record.COBCEId
-        elif hasattr(record, "COIId"):
-            record_id = record.COIId
-        else:
-            record_id = None
-
-        if getattr(record, "Status", None) == "Draft":
-            pending_at_display = "-"
-        elif record.OverallStatus != "Closed":
-            if record.PendingAt == 1:
-                pending_at_display = "Compliance Team"
-            elif record.PendingAt == 0:
-                pending_at_display = record.CreatedBy
-            else:
-                pending_at_display = "-"
-        else:
-            pending_at_display = "-"
-
-        response_body = {
-            "details": {
-                "id": record_id,
-                "status": record.OverallStatus,
-                "pendingAt": pending_at_display,
-                "createdBy": record.CreatedBy,
-                "createdOn": str(record.CreatedOn),
-                "closureDate": str(record.ClosureDate) if record.ClosureDate else None,
-                "workflowStatus": record.Status if hasattr(record, "Status") else None,
-            },
-            "conversation": data,
-        }
-
-        return log_and_json_response(
-            user["staff_id"],
-            {"query_id": query_id},
-            "/query/{query_id}",
-            "GET",
-            200,
-            response_body,
-        )
-    except Exception as e:
-        print(traceback.format_exc())
-        return log_and_json_response(
-            user.get("staff_id"),
-            {"query_id": query_id},
-            "/query/{query_id}",
-            "GET",
-            500,
-            {"error": "Error fetching querys", "details": str(e)},
         )

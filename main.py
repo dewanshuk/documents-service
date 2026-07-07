@@ -10,6 +10,7 @@ from utils.loggers import init_ai_logger
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from core import config
+from core.openapi_tags import OPENAPI_TAGS, TAG_ANNUAL
 from api.routes.annual_dec import  annual_declaration_router
 # IMPORT YOUR COMPLIANCE ROUTER
 from api.routes.helpdesk import health_router
@@ -33,6 +34,7 @@ app = FastAPI(
     title="Compliance Helpdesk API",
     description="API for managing compliance helpdesk queries including raise, respond, close, and view operations.",
     version="1.0.0",
+    openapi_tags=OPENAPI_TAGS,
 )
 
 
@@ -73,17 +75,16 @@ app.add_middleware(
 
 # ROUTERS
 
-app.include_router(annual_declaration_router.router, prefix="/api/declarations", tags=["Annual Declarations"])
-# Health
+app.include_router(
+    annual_declaration_router.router,
+    prefix="/api/declarations",
+    tags=[TAG_ANNUAL],
+)
 app.include_router(
     health_router.router,
-    tags=["Health"],
-    prefix="/api/compliance"
+    prefix="/api/compliance",
 )
-
-# Compliance Helpdesk 
 app.include_router(
     compliance_helpdesk.router,
-    tags=["Compliance Helpdesk"],
-    prefix="/api/compliance"
+    prefix="/api/compliance",
 )

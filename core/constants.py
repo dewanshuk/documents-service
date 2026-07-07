@@ -4,6 +4,7 @@ ENV = os.getenv("ENV", "local")
 KV_URL = os.getenv("AZURE_KEY_VAULT_URL", "")
 
 SELF_DECL_DUE_DAYS = 7
+RESPONSE_DUE_DAYS = 2
 DEFAULT_PAGE_SIZE = 10
 
 TYPE_FILTER_MAP = {
@@ -23,4 +24,15 @@ EXPORT_COLUMNS = [
     "Updated On",
     "Response Due Date",
     "Updated By",
+    "Pending At",
+    "Closed At",
+    "Closed By",
 ]
+
+RECORD_TYPE_LEAD_MAP = {
+    "gift declaration": "is_cobce_coi_gift_lead",
+    "complaint": "is_complaint_lead",
+    "query": "is_query_lead",
+    "annual declaration": "is_knowledge_hub_admin",
+    "self declaration": "is_knowledge_hub_admin",
+}

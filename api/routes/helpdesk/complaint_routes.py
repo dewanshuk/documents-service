@@ -10,7 +10,9 @@ from db.validators.comp_help import QueryType
 from storage.storage_ops import upload_files, init_json
 from .route_utils import log_and_json_response
 
-router = APIRouter()
+from core.openapi_tags import TAG_COMPLAINT
+
+router = APIRouter(tags=[TAG_COMPLAINT])
 
 # Complaint endpoints for raising complaints.
 

@@ -8,7 +8,7 @@ from sqlalchemy import select, and_, or_, func, case
 from openpyxl import Workbook
 
 from core.constants import (
-    SELF_DECL_DUE_DAYS,
+    RESPONSE_DUE_DAYS,
     DEFAULT_PAGE_SIZE,
     TYPE_FILTER_MAP,
     EXPORT_COLUMNS,
@@ -30,6 +30,13 @@ from db.models.annual_dec import (
 )
 from utils.record_ids import build_annual_user_status_id
 from utils.helpers import datetimeformatter, UTC
+
+
+def _format_staff_display(staff_id: Optional[str], name_map: dict[str, str]) -> Optional[str]:
+    if not staff_id:
+        return None
+    name = name_map.get(staff_id, staff_id)
+    return f"{name} ({staff_id})"
 
 
 
@@ -68,7 +75,7 @@ HELPDESK_CONFIGS = [
         pk_field="GiftId",
         search_fields=("GiftId", "Person"),
         sub_type_value="Gift",
-        updated_field="ClosureDate",
+        updated_field="LastUpdatedOn",
     ),
     TableConfig(
         model=COBCEDeclarations,
@@ -76,6 +83,7 @@ HELPDESK_CONFIGS = [
         pk_field="COBCEId",
         search_fields=("COBCEId", "Description"),
         sub_type_value="COBCE",
+        updated_field="LastUpdatedOn",
     ),
     TableConfig(
         model=COIDeclarations,
@@ -83,6 +91,7 @@ HELPDESK_CONFIGS = [
         pk_field="COIId",
         search_fields=("COIId",),
         sub_type_value="COI",
+        updated_field="LastUpdatedOn",
     ),
     TableConfig(
         model=R518Declarations,
@@ -90,6 +99,7 @@ HELPDESK_CONFIGS = [
         pk_field="R518Id",
         search_fields=("R518Id",),
         sub_type_value="R5.18",
+        updated_field="LastUpdatedOn",
     ),
 ]
 
@@ -107,6 +117,170 @@ class FilterParams:
     response_due_end: Optional[date] = None
     per_table_limit: Optional[int] = None
 
+
+
+
+async def get_dashboard(
+    staff_id: str,
+    is_admin: bool,
+    tab: str = "pending",
+    search: Optional[str] = None,
+    type_filter: Optional[str] = None,
+    sub_type: Optional[str] = None,
+    response_status: Optional[str] = None,
+    overall_status: Optional[str] = None,
+    updated_on_start: Optional[date] = None,
+    updated_on_end: Optional[date] = None,
+    response_due_start: Optional[date] = None,
+    response_due_end: Optional[date] = None,
+    page: int = 1,
+    page_size: int = DEFAULT_PAGE_SIZE,
+) -> dict:
+    active_types = _parse_type_filters(type_filter)
+
+    params = FilterParams(
+        search=search.strip() if search else None,
+        sub_type=sub_type,
+        overall_status=overall_status,
+        response_status=response_status,
+        updated_on_start=updated_on_start,
+        updated_on_end=updated_on_end,
+        response_due_start=response_due_start,
+        response_due_end=response_due_end,
+        per_table_limit=page * page_size,
+    )
+
+    if params.search:
+        async with get_session() as session:
+            params.search_staff_ids = await _get_matching_staff_ids(
+                session, params.search
+            )
+
+    active_configs = [c for c in HELPDESK_CONFIGS if c.type_label in active_types]
+    include_annual = "Annual Declaration" in active_types
+
+    data_tasks = [
+        _collect_helpdesk(c, staff_id, is_admin, tab, params) for c in active_configs
+    ]
+    count_tasks = [
+        _count_helpdesk(c, staff_id, is_admin, tab, params) for c in active_configs
+    ]
+    if include_annual:
+        data_tasks.append(_collect_annual(staff_id, tab, params))
+        count_tasks.append(_count_annual(staff_id, tab, params))
+
+    all_results = await asyncio.gather(*data_tasks, *count_tasks)
+
+    n_data = len(data_tasks)
+    data_results = all_results[:n_data]
+    count_results = list(all_results[n_data:])
+
+    all_items = [item for group in data_results for item in group]
+    all_items.sort(key=lambda x: _sort_key(x.get("_updated_on")), reverse=True)
+
+    start = (page - 1) * page_size
+    page_items = all_items[start : start + page_size]
+
+    staff_ids = set()
+    for item in page_items:
+        for key in ("_staff_id", "_assigned_to", "_closed_by"):
+            if item.get(key):
+                staff_ids.add(item[key])
+
+    async with get_session() as session:
+        name_map = await _get_user_name_map(session, staff_ids)
+
+    summary = _build_summary(active_configs, include_annual, count_results)
+    total = sum(c["total"] for c in count_results)
+
+    return {
+        "items": [_finalize_item(item, name_map, is_admin) for item in page_items],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "summary": summary,
+    }
+
+
+async def get_dashboard_export_file(
+    staff_id: str,
+    is_admin: bool,
+    tab: str = "pending",
+    search: Optional[str] = None,
+    type_filter: Optional[str] = None,
+    sub_type: Optional[str] = None,
+    response_status: Optional[str] = None,
+    overall_status: Optional[str] = None,
+    updated_on_start: Optional[date] = None,
+    updated_on_end: Optional[date] = None,
+    response_due_start: Optional[date] = None,
+    response_due_end: Optional[date] = None,
+) -> BytesIO:
+    active_types = _parse_type_filters(type_filter)
+
+    params = FilterParams(
+        search=search.strip() if search else None,
+        sub_type=sub_type,
+        overall_status=overall_status,
+        response_status=response_status,
+        updated_on_start=updated_on_start,
+        updated_on_end=updated_on_end,
+        response_due_start=response_due_start,
+        response_due_end=response_due_end,
+    )
+
+    if params.search:
+        async with get_session() as session:
+            params.search_staff_ids = await _get_matching_staff_ids(
+                session, params.search
+            )
+
+    active_configs = [c for c in HELPDESK_CONFIGS if c.type_label in active_types]
+    include_annual = "Annual Declaration" in active_types
+
+    tasks = [
+        _collect_helpdesk(c, staff_id, is_admin, tab, params) for c in active_configs
+    ]
+    if include_annual:
+        tasks.append(_collect_annual(staff_id, tab, params))
+
+    results = await asyncio.gather(*tasks)
+    all_items = [item for group in results for item in group]
+    all_items.sort(key=lambda x: _sort_key(x.get("_updated_on")), reverse=True)
+
+    staff_ids = set()
+    for item in all_items:
+        for key in ("_staff_id", "_assigned_to", "_closed_by"):
+            if item.get(key):
+                staff_ids.add(item[key])
+
+    async with get_session() as session:
+        name_map = await _get_user_name_map(session, staff_ids)
+
+    formatted = [_finalize_item(item, name_map, is_admin) for item in all_items]
+
+    wb = Workbook(write_only=True)
+    ws = wb.create_sheet(title="Dashboard Export")
+    ws.append(EXPORT_COLUMNS)
+    for item in formatted:
+        ws.append([
+            item.get("request_id"),
+            item.get("type"),
+            item.get("sub_type"),
+            item.get("response_status"),
+            item.get("overall_status"),
+            item.get("updated_on"),
+            item.get("response_due_date"),
+            item.get("updated_by"),
+            item.get("pending_at"),
+            item.get("closed_at"),
+            item.get("closed_by"),
+        ])
+
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+    return output
 
 
 
@@ -141,12 +315,12 @@ def _response_status(due_date, overall_status: str) -> str:
     return "Overdue" if due_date < today else "Due"
 
 
-def _compute_due_date(created_on) -> Optional[date]:
-    if created_on is None:
+def _compute_due_date(last_updated) -> Optional[date]:
+    if last_updated is None:
         return None
-    if isinstance(created_on, datetime):
-        return (created_on + timedelta(days=SELF_DECL_DUE_DAYS)).date()
-    return created_on + timedelta(days=SELF_DECL_DUE_DAYS)
+    if isinstance(last_updated, datetime):
+        return (last_updated + timedelta(days=RESPONSE_DUE_DAYS)).date()
+    return last_updated + timedelta(days=RESPONSE_DUE_DAYS)
 
 
 def _normalize_datetime(value) -> Optional[datetime]:
@@ -173,16 +347,40 @@ def _format_date(val) -> Optional[str]:
         return None
 
 
-def _finalize_item(item: dict, name_map: dict[str, str]) -> dict:
+def _finalize_item(item: dict, name_map: dict[str, str], is_admin: bool) -> dict:
     staff_id = item.pop("_staff_id", None)
     updated_raw = item.pop("_updated_on", None)
     due_raw = item.pop("_response_due_raw", None)
-
-    user_name = name_map.get(staff_id, staff_id) if staff_id else None
+    pending_at_raw = item.pop("_pending_at", None)
+    assigned_to_raw = item.pop("_assigned_to", None)
+    closed_at_raw = item.pop("_closed_at", None)
+    closed_by_raw = item.pop("_closed_by", None)
 
     item["updated_on"] = _format_date(updated_raw)
     item["response_due_date"] = _format_date(due_raw)
-    item["updated_by"] = f"{user_name} ({staff_id})" if staff_id else None
+    item["updated_by"] = _format_staff_display(staff_id, name_map)
+
+    if pending_at_raw == 0:
+        item["pending_at"] = _format_staff_display(staff_id, name_map)
+    elif pending_at_raw == 1:
+        if is_admin and assigned_to_raw:
+            item["pending_at"] = _format_staff_display(assigned_to_raw, name_map)
+        else:
+            item["pending_at"] = "Compliance Team"
+    else:
+        item["pending_at"] = None
+
+    if is_admin and assigned_to_raw:
+        item["assigned_to"] = _format_staff_display(assigned_to_raw, name_map)
+    elif assigned_to_raw or item["type"] != "Annual Declaration":
+        item["assigned_to"] = None
+    else:
+        item["assigned_to"] = None
+
+    item["closed_at"] = _format_date(closed_at_raw)
+
+    item["closed_by"] = _format_staff_display(closed_by_raw, name_map)
+
     return item
 
 
@@ -217,7 +415,7 @@ def _helpdesk_where_clauses(
     """Build WHERE clauses for a helpdesk model. Returns None to skip this config."""
     model = config.model
     updated_col = _get_updated_col(config)
-    due_expr = func.date(model.CreatedOn) + SELF_DECL_DUE_DAYS
+    due_expr = func.date(updated_col) + RESPONSE_DUE_DAYS
     today = date.today()
     clauses = []
 
@@ -226,6 +424,23 @@ def _helpdesk_where_clauses(
 
     if tab == "pending":
         clauses.append(func.lower(model.OverallStatus) != "completed")
+        if is_admin:
+            clauses.append(model.PendingAt == 1)
+        else:
+            clauses.append(model.PendingAt == 0)
+    elif tab == "all":
+        if is_admin:
+            clauses.append(or_(
+                model.PendingAt == 0,
+                func.lower(model.OverallStatus) == "completed",
+                model.PendingAt.is_(None),
+            ))
+        else:
+            clauses.append(or_(
+                model.PendingAt == 1,
+                func.lower(model.OverallStatus) == "completed",
+                model.PendingAt.is_(None),
+            ))
 
     if params.overall_status:
         clauses.append(
@@ -277,12 +492,13 @@ def _helpdesk_where_clauses(
 def _format_helpdesk_record(config: TableConfig, rec) -> dict:
     pk_val = getattr(rec, config.pk_field)
     overall = rec.OverallStatus or "Pending"
-    due = _compute_due_date(rec.CreatedOn)
-    rs = _response_status(due, overall)
 
     updated_on = rec.CreatedOn
     if config.updated_field:
         updated_on = getattr(rec, config.updated_field, None) or rec.CreatedOn
+
+    due = _compute_due_date(updated_on)
+    rs = _response_status(due, overall)
 
     sub_type = config.sub_type_value or (
         getattr(rec, config.sub_type_field, None) if config.sub_type_field else None
@@ -297,6 +513,10 @@ def _format_helpdesk_record(config: TableConfig, rec) -> dict:
         "_staff_id": rec.CreatedBy,
         "_updated_on": updated_on,
         "_response_due_raw": due,
+        "_pending_at": getattr(rec, "PendingAt", None),
+        "_assigned_to": getattr(rec, "AssignedTo", None),
+        "_closed_at": getattr(rec, "ClosureDate", None),
+        "_closed_by": getattr(rec, "ClosedBy", None),
     }
 
 
@@ -441,6 +661,10 @@ def _format_annual_record(uds, decl) -> dict:
         "_staff_id": uds.staff_id,
         "_updated_on": updated_on,
         "_response_due_raw": decl.due_date,
+        "_pending_at": None,
+        "_assigned_to": None,
+        "_closed_at": None,
+        "_closed_by": None,
         "declaration_status": status,
     }
 
@@ -523,7 +747,7 @@ def _build_summary(active_configs: list[TableConfig], include_annual: bool, coun
         total_overdue += stats["overdue"]
 
     return {
-        "total_due": total_due + total_overdue,
+        "total_due": total_due,
         "total_overdue": total_overdue,
         "annual_declarations": type_totals.get("Annual Declaration", 0),
         "self_declarations": type_totals.get("Self Declaration", 0),
@@ -534,152 +758,3 @@ def _build_summary(active_configs: list[TableConfig], include_annual: bool, coun
 
 
 
-
-async def get_dashboard(
-    staff_id: str,
-    is_admin: bool,
-    tab: str = "pending",
-    search: Optional[str] = None,
-    type_filter: Optional[str] = None,
-    sub_type: Optional[str] = None,
-    response_status: Optional[str] = None,
-    overall_status: Optional[str] = None,
-    updated_on_start: Optional[date] = None,
-    updated_on_end: Optional[date] = None,
-    response_due_start: Optional[date] = None,
-    response_due_end: Optional[date] = None,
-    page: int = 1,
-    page_size: int = DEFAULT_PAGE_SIZE,
-) -> dict:
-    active_types = _parse_type_filters(type_filter)
-
-    params = FilterParams(
-        search=search.strip() if search else None,
-        sub_type=sub_type,
-        overall_status=overall_status,
-        response_status=response_status,
-        updated_on_start=updated_on_start,
-        updated_on_end=updated_on_end,
-        response_due_start=response_due_start,
-        response_due_end=response_due_end,
-        per_table_limit=page * page_size,
-    )
-
-    if params.search:
-        async with get_session() as session:
-            params.search_staff_ids = await _get_matching_staff_ids(
-                session, params.search
-            )
-
-    active_configs = [c for c in HELPDESK_CONFIGS if c.type_label in active_types]
-    include_annual = "Annual Declaration" in active_types
-
-    data_tasks = [
-        _collect_helpdesk(c, staff_id, is_admin, tab, params) for c in active_configs
-    ]
-    count_tasks = [
-        _count_helpdesk(c, staff_id, is_admin, tab, params) for c in active_configs
-    ]
-    if include_annual:
-        data_tasks.append(_collect_annual(staff_id, tab, params))
-        count_tasks.append(_count_annual(staff_id, tab, params))
-
-    all_results = await asyncio.gather(*data_tasks, *count_tasks)
-
-    n_data = len(data_tasks)
-    data_results = all_results[:n_data]
-    count_results = list(all_results[n_data:])
-
-    all_items = [item for group in data_results for item in group]
-    all_items.sort(key=lambda x: _sort_key(x.get("_updated_on")), reverse=True)
-
-    start = (page - 1) * page_size
-    page_items = all_items[start : start + page_size]
-
-    staff_ids = {i["_staff_id"] for i in page_items if i.get("_staff_id")}
-    async with get_session() as session:
-        name_map = await _get_user_name_map(session, staff_ids)
-
-    summary = _build_summary(active_configs, include_annual, count_results)
-    total = sum(c["total"] for c in count_results)
-
-    return {
-        "items": [_finalize_item(item, name_map) for item in page_items],
-        "total": total,
-        "page": page,
-        "page_size": page_size,
-        "summary": summary,
-    }
-
-
-async def get_dashboard_export_file(
-    staff_id: str,
-    is_admin: bool,
-    tab: str = "pending",
-    search: Optional[str] = None,
-    type_filter: Optional[str] = None,
-    sub_type: Optional[str] = None,
-    response_status: Optional[str] = None,
-    overall_status: Optional[str] = None,
-    updated_on_start: Optional[date] = None,
-    updated_on_end: Optional[date] = None,
-    response_due_start: Optional[date] = None,
-    response_due_end: Optional[date] = None,
-) -> BytesIO:
-    active_types = _parse_type_filters(type_filter)
-
-    params = FilterParams(
-        search=search.strip() if search else None,
-        sub_type=sub_type,
-        overall_status=overall_status,
-        response_status=response_status,
-        updated_on_start=updated_on_start,
-        updated_on_end=updated_on_end,
-        response_due_start=response_due_start,
-        response_due_end=response_due_end,
-    )
-
-    if params.search:
-        async with get_session() as session:
-            params.search_staff_ids = await _get_matching_staff_ids(
-                session, params.search
-            )
-
-    active_configs = [c for c in HELPDESK_CONFIGS if c.type_label in active_types]
-    include_annual = "Annual Declaration" in active_types
-
-    tasks = [
-        _collect_helpdesk(c, staff_id, is_admin, tab, params) for c in active_configs
-    ]
-    if include_annual:
-        tasks.append(_collect_annual(staff_id, tab, params))
-
-    results = await asyncio.gather(*tasks)
-    all_items = [item for group in results for item in group]
-    all_items.sort(key=lambda x: _sort_key(x.get("_updated_on")), reverse=True)
-
-    staff_ids = {i["_staff_id"] for i in all_items if i.get("_staff_id")}
-    async with get_session() as session:
-        name_map = await _get_user_name_map(session, staff_ids)
-
-    formatted = [_finalize_item(item, name_map) for item in all_items]
-
-    wb = Workbook(write_only=True)
-    ws = wb.create_sheet(title="Dashboard Export")
-    ws.append(EXPORT_COLUMNS)
-    for item in formatted:
-        ws.append([
-            item.get("request_id"),
-            item.get("type"),
-            item.get("sub_type"),
-            item.get("response_status"),
-            item.get("overall_status"),
-            item.get("updated_on"),
-            item.get("response_due_date"),
-            item.get("updated_by"),
-        ])
-
-    output = BytesIO()
-    wb.save(output)
-    output.seek(0)
-    return output

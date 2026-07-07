@@ -9,7 +9,9 @@ from db.models.helpdesk import GiftDeclarations
 from storage.storage_ops import upload_files, init_json
 from .route_utils import log_and_json_response
 
-router = APIRouter()
+from core.openapi_tags import TAG_GIFT
+
+router = APIRouter(tags=[TAG_GIFT])
 
 # Gift declaration endpoints for raising gift declarations.
 

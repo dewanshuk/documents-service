@@ -12,7 +12,9 @@ from utils.authorize import is_active_cobce_coi_gift_lead
 from .self_declaration_config import SELF_DECLARATION_FORM_CONFIG
 from .route_utils import log_and_json_response
 
-router = APIRouter()
+from core.openapi_tags import TAG_SELF_DECLARATION
+
+router = APIRouter(tags=[TAG_SELF_DECLARATION])
 
 
 @router.get("/self-declaration/form-config")

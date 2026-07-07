@@ -13,8 +13,12 @@ class BaseUsers(Base):
 class User(BaseUsers):
     __tablename__ = "users"
     staff_id: Mapped[str] = mapped_column(String(255), primary_key=True, nullable=False, index=True)
+    username: Mapped[str | None] = mapped_column(String(255), nullable=True)
     status: Mapped[str] = mapped_column(
         String(50), nullable=False, index=True, server_default="active"
+    )
+    is_master_admin: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=false()
     )
     is_policy_hub_admin: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=false()
@@ -31,6 +35,11 @@ class User(BaseUsers):
     is_query_lead: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=false()
     )
+    is_cheif_compliance_officer: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=false()
+    )
+    
+
 
 class ComplianceQuery(Base):
     __tablename__ = "compliance_queries"
@@ -49,12 +58,14 @@ class ComplianceQuery(Base):
 
     OverallStatus: Mapped[str] = mapped_column(String(50), nullable=False)
     PendingAt: Mapped[int] = mapped_column(Integer, nullable=False)
+    AssignedTo: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     ResponseJsonPath: Mapped[str] = mapped_column(String(1000), nullable=False)
 
     ClosureDate: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    ClosedBy: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     LastUpdatedOn: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -79,9 +90,14 @@ class GiftDeclarations(Base):
 
     OverallStatus: Mapped[str]
     PendingAt: Mapped[int]
+    AssignedTo: Mapped[str | None] = mapped_column(String(255), nullable=True)
     ResponseJsonPath: Mapped[str]
 
     ClosureDate: Mapped[datetime | None]
+    ClosedBy: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    LastUpdatedOn: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 class Complaints(Base):
     __tablename__ = "complaints"
@@ -96,10 +112,12 @@ class Complaints(Base):
 
     OverallStatus: Mapped[str]
     PendingAt: Mapped[int]
+    AssignedTo: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     ResponseJsonPath: Mapped[str]
 
     ClosureDate: Mapped[datetime | None]
+    ClosedBy: Mapped[str | None] = mapped_column(String(255), nullable=True)
     LastUpdatedOn: Mapped[datetime | None]
 
 class COBCEDeclarations(Base):
@@ -119,9 +137,13 @@ class COBCEDeclarations(Base):
 
     OverallStatus: Mapped[str | None]
     PendingAt: Mapped[int | None]
+    AssignedTo: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     ClosureDate: Mapped[datetime | None]
     ClosedBy: Mapped[str | None]
+    LastUpdatedOn: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     ResponseJsonPath: Mapped[str | None]
 
@@ -140,9 +162,13 @@ class COIDeclarations(Base):
 
     OverallStatus: Mapped[str | None]
     PendingAt: Mapped[int | None]
+    AssignedTo: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     ClosureDate: Mapped[datetime | None]
     ClosedBy: Mapped[str | None]
+    LastUpdatedOn: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     ResponseJsonPath: Mapped[str | None]
 
@@ -163,8 +189,12 @@ class R518Declarations(Base):
 
     OverallStatus: Mapped[str | None]
     PendingAt: Mapped[int | None]
+    AssignedTo: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     ClosureDate: Mapped[datetime | None]
     ClosedBy: Mapped[str | None]
+    LastUpdatedOn: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     ResponseJsonPath: Mapped[str | None]
