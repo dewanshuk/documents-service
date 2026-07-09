@@ -1,6 +1,5 @@
 import asyncio
 from io import BytesIO
-from uuid import UUID
 
 from openpyxl import load_workbook
 from sqlalchemy import select, and_, delete
@@ -34,7 +33,7 @@ def _is_pending_row(row, status_col: int | None) -> bool:
     return str(row[status_col] or "").strip().lower() != "completed"
 
 
-async def process_declaration_excel(declaration_id: UUID, file_bytes: bytes) -> dict:
+async def process_declaration_excel(declaration_id: str, file_bytes: bytes) -> dict:
     """Parse Excel bytes and upsert UserDeclarationStatus rows (notify yes/no)."""
     col_map, data_rows = await asyncio.to_thread(_iter_excel_rows, file_bytes)
 
@@ -47,11 +46,9 @@ async def process_declaration_excel(declaration_id: UUID, file_bytes: bytes) -> 
 
     async with get_session() as session:
         declaration = await session.get(AnnualDeclaration, declaration_id)
-        if not declaration or not declaration.reference_id:
-            raise ValueError(
-                "Declaration cycle is missing reference_id; recreate the cycle"
-            )
-        annual_declaration_id = declaration.reference_id
+        if not declaration:
+            raise ValueError("Declaration cycle not found")
+        annual_declaration_id = declaration.id
 
     pending_rows = [row for row in data_rows if _is_pending_row(row, status_col)]
 
@@ -131,7 +128,7 @@ async def process_declaration_excel(declaration_id: UUID, file_bytes: bytes) -> 
         await session.commit()
 
     return {
-        "reference_id": annual_declaration_id,
+        "declaration_id": annual_declaration_id,
         "sync_status": SyncStatus.COMPLETED.value,
         "processed": processed,
         "excluded_users": excluded,

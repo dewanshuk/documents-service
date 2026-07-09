@@ -1,4 +1,3 @@
-import uuid
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from fastapi.responses import StreamingResponse, JSONResponse
 from datetime import datetime
@@ -52,13 +51,13 @@ async def create_declaration(
 
         data = payload.model_dump()
         data["declaration_name"] = decl_name
-        data["reference_id"] = await next_annual_cycle_ref()
+        data["id"] = await next_annual_cycle_ref()
         created = await db_manager.create(AnnualDeclaration, data)
         await invalidate_declarations_list_cache()
         return JSONResponse(
             content={
                 "message": "Declaration record created successfully",
-                "reference_id": created.reference_id,
+                "id": created.id,
             },
             status_code=201,
         )
@@ -84,7 +83,7 @@ async def list_declarations_endpoint(
 
 @router.get("/declaration-responses/{declaration_id}")
 async def declaration_responses(
-    declaration_id: uuid.UUID,
+    declaration_id: str,
     staff_id: str | None = Query(
         None, description="Required for master admin; ignored for regular users"
     ),
@@ -110,7 +109,7 @@ async def declaration_responses(
 
 @router.post("/save-declaration/{declaration_id}")
 async def save_declaration(
-    declaration_id: uuid.UUID,
+    declaration_id: str,
     payload: SaveDeclarationRequest,
     current_user: dict = Depends(get_current_user),
 ):
@@ -135,7 +134,7 @@ async def save_declaration(
 
 @router.post("/upload-declaration-file/{declaration_id}")
 async def upload_declaration_file(
-    declaration_id: uuid.UUID,
+    declaration_id: str,
     file: UploadFile = File(...),
     current_user: dict = Depends(get_current_user),
 ):

@@ -102,9 +102,9 @@ async def next_self_decl_id(staff_id: str, year: int | None = None) -> str:
 
 
 async def next_annual_cycle_ref() -> str:
-    """Admin cycle id, e.g. 1, 123 — shared by all users in that cycle."""
+    """Admin cycle id, zero-padded e.g. 0001, 0123 — shared by all users in that cycle."""
     seq = await _next_sequence_value("annual_declarations", "seq_ad_cycle")
-    return str(seq)
+    return f"{seq:04d}"
 
 
 def _is_annual_user_status_id(record_id: str) -> bool:

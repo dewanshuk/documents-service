@@ -149,7 +149,7 @@ async def _persist_form_responses(
 
 
 async def save_user_declaration(
-    declaration_id: UUID,
+    declaration_id: str,
     staff_id: str,
     responses: list[dict],
     status: str,
@@ -165,8 +165,6 @@ async def save_user_declaration(
             raise ValueError(
                 "Declaration template has not been uploaded yet"
             )
-        if not declaration.reference_id:
-            raise ValueError("Declaration cycle is not ready (missing reference id)")
 
         decl_name = as_declaration_name(declaration.declaration_name)
         question_config = get_question_config(decl_name)
@@ -225,7 +223,7 @@ async def save_user_declaration(
 
         return {
             "id": str(status_record.id),
-            "reference_id": declaration.reference_id,
+            "declaration_id": declaration.id,
             "status": status_record.status,
             "has_conflicts": status_record.has_conflicts,
             "created_self_declarations": created_self_declarations,
@@ -279,7 +277,7 @@ async def invalidate_declarations_list_cache() -> None:
     await cache_delete_pattern(LIST_DECLARATIONS_CACHE_PREFIX)
 
 
-async def _count_user_statuses(session, declaration_ids: list[UUID]) -> dict[UUID, dict]:
+async def _count_user_statuses(session, declaration_ids: list[str]) -> dict[str, dict]:
     if not declaration_ids:
         return {}
 
@@ -351,7 +349,7 @@ async def list_declarations(
             )
             items.append(
                 {
-                    "reference_id": decl.reference_id,
+                    "id": decl.id,
                     "declaration_name": as_declaration_name(decl.declaration_name),
                     "financial_year": decl.financial_year,
                     "assigned_date": decl.assigned_date.isoformat(),
@@ -374,7 +372,7 @@ async def list_declarations(
 
 
 async def get_declaration_user_responses(
-    declaration_id: UUID,
+    declaration_id: str,
     staff_id: str,
 ) -> dict:
     async with get_session() as session:
@@ -408,7 +406,7 @@ async def get_declaration_user_responses(
         prefilled = await _get_prefill_data(session, staff_id, decl_name)
 
         return {
-            "reference_id": declaration.reference_id,
+            "id": declaration.id,
             "user_status_id": status_record.id,
             "declaration_name": decl_name,
             "financial_year": declaration.financial_year,

@@ -608,7 +608,7 @@ def _annual_where_clauses(staff_id: str, tab: str, params: FilterParams):
         pattern = f"%{params.search}%"
         clauses.append(or_(
             UserDeclarationStatus.id.ilike(pattern),
-            AnnualDeclaration.reference_id.ilike(pattern),
+            AnnualDeclaration.id.ilike(pattern),
         ))
 
     if params.updated_on_start:
@@ -649,11 +649,11 @@ def _format_annual_record(uds, decl) -> dict:
     overall = "Completed" if display_status == "Completed" else "In-Progress"
     rs = _response_status(decl.due_date, overall)
     updated_on = uds.last_saved_at or uds.submitted_at or decl.last_updated_at
-    request_id = uds.id or build_annual_user_status_id(uds.staff_id, decl.reference_id)
+    request_id = uds.id or build_annual_user_status_id(uds.staff_id, decl.id)
 
     return {
         "request_id": request_id,
-        "reference_id": decl.reference_id,
+        "reference_id": decl.id,
         "type": "Annual Declaration",
         "sub_type": as_declaration_name(decl.declaration_name),
         "response_status": rs,

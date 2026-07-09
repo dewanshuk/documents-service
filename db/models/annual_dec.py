@@ -64,8 +64,7 @@ class AnnualDeclaration(Base):
         {"schema": "annual_declarations"},
     )
 
-    id = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    reference_id = mapped_column(String(20), nullable=True, unique=True)
+    id = mapped_column(String(20), primary_key=True)
     declaration_name = mapped_column(String(20), nullable=False)
     financial_year = mapped_column(String(7), nullable=False)
     assigned_date = mapped_column(Date, nullable=False)
@@ -112,7 +111,7 @@ class UserDeclarationStatus(Base):
 
     id = mapped_column(String(80), primary_key=True)
     declaration_id = mapped_column(
-        UUID(as_uuid=True),
+        String(20),
         ForeignKey("annual_declarations.annual_declarations.id", ondelete="CASCADE"),
         nullable=False,
     )

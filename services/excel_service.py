@@ -1,5 +1,4 @@
 from io import BytesIO
-from uuid import UUID
 
 from openpyxl import Workbook, load_workbook
 from sqlalchemy import select, func
@@ -82,7 +81,7 @@ def parse_excel_counts(file_bytes: bytes) -> tuple[int, int, str]:
     return pending, total, f"{pending}/{total}"
 
 
-async def generate_declaration_report(declaration_id: UUID) -> BytesIO:
+async def generate_declaration_report(declaration_id: str) -> BytesIO:
     """Excel template: user metadata + status. Uses write-only mode for large user counts."""
 
     async with get_session() as session:

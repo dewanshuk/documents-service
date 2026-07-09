@@ -254,20 +254,6 @@ async def init_db(Base):
         await conn.execute(text("CREATE SCHEMA IF NOT EXISTS users"))
         await conn.execute(text("CREATE SCHEMA IF NOT EXISTS annual_declarations"))
         await conn.execute(text("CREATE SCHEMA IF NOT EXISTS compliance"))
-        await conn.execute(
-            text(
-                "ALTER TABLE annual_declarations.annual_declarations "
-                "ADD COLUMN IF NOT EXISTS reference_id VARCHAR(20)"
-            )
-        )
-        await conn.execute(
-            text(
-                "CREATE UNIQUE INDEX IF NOT EXISTS "
-                "uq_annual_declarations_reference_id "
-                "ON annual_declarations.annual_declarations (reference_id) "
-                "WHERE reference_id IS NOT NULL"
-            )
-        )
         helpdesk_tables = [
             "compliance_queries",
             "gift_declarations",
