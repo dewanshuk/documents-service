@@ -12,6 +12,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from core import config
 from core.openapi_tags import OPENAPI_TAGS, TAG_ANNUAL
 from api.routes.annual_dec import  annual_declaration_router
+from api.middleware.recent_records import RecentRecordsMiddleware
 # IMPORT YOUR COMPLIANCE ROUTER
 from api.routes.helpdesk import health_router
 
@@ -61,6 +62,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(RecentRecordsMiddleware)
 
 
 # CORS Middleware

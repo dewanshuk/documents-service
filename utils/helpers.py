@@ -1,4 +1,4 @@
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from typing import Union
 from zoneinfo import ZoneInfo
 
@@ -9,6 +9,20 @@ UTC = ZoneInfo("UTC")
 
 MONTH_ABBR = ("", "JAN", "FEB", "MAR", "APR", "MAY", "JUN",
               "JUL", "AUG", "SEP", "OCT", "NOV", "DEC")
+
+
+def add_working_days(start: date, working_days: int) -> date:
+    """Add working days (Mon-Fri), skipping Saturdays and Sundays."""
+    if working_days <= 0:
+        return start
+
+    current = start
+    added = 0
+    while added < working_days:
+        current += timedelta(days=1)
+        if current.weekday() < 5:
+            added += 1
+    return current
 
 
 def now_ist() -> datetime:

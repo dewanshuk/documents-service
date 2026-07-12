@@ -198,3 +198,20 @@ class R518Declarations(Base):
     )
 
     ResponseJsonPath: Mapped[str | None]
+
+class RecentUserRecords(Base):
+    __tablename__ = "recent_user_records"
+    __table_args__ = {"schema": "compliance"}
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
+    record_id: Mapped[str] = mapped_column(String(100), index=True, nullable=False)
+    record_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    sub_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    status: Mapped[str] = mapped_column(String(50), nullable=False)
+    created_on: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    pending_at: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    last_accessed_on: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), index=True
+    )

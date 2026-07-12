@@ -6,6 +6,7 @@ TAG_GIFT = "Gift Declaration"
 TAG_SELF_DECLARATION = "Self Declaration"
 TAG_ADMINS = "Admins"
 TAG_ANNUAL = "Annual Declarations"
+TAG_RECENT_ACTIVITY = "Recent Activity"
 
 OPENAPI_TAGS = [
     {
@@ -42,5 +43,12 @@ OPENAPI_TAGS = [
     {
         "name": TAG_ANNUAL,
         "description": "Annual declaration cycles and user submissions.",
+    },
+    {
+        "name": TAG_RECENT_ACTIVITY,
+        "description": (
+            "Recently accessed compliance records for the home page, including "
+            "queries, complaints, gift/self declarations, and annual declarations."
+        ),
     },
 ]

@@ -29,7 +29,7 @@ from db.models.annual_dec import (
     as_declaration_name,
 )
 from utils.record_ids import build_annual_user_status_id
-from utils.helpers import datetimeformatter, UTC
+from utils.helpers import datetimeformatter, UTC, add_working_days
 
 
 def _format_staff_display(staff_id: Optional[str], name_map: dict[str, str]) -> Optional[str]:
@@ -315,12 +315,27 @@ def _response_status(due_date, overall_status: str) -> str:
     return "Overdue" if due_date < today else "Due"
 
 
+def _working_days_due_expr(updated_col, working_days: int):
+    """SQL expression for due date after N working days (excludes Sat/Sun)."""
+    base_date = func.date(updated_col)
+    whens = []
+    # PostgreSQL DOW: Sunday=0 ... Saturday=6
+    sample_week = date(2024, 1, 7)
+    for pg_dow in range(7):
+        sample = sample_week + timedelta(days=pg_dow)
+        due = add_working_days(sample, working_days)
+        whens.append(
+            (func.extract("dow", base_date) == pg_dow, base_date + (due - sample).days)
+        )
+    return case(*whens, else_=base_date + working_days)
+
+
 def _compute_due_date(last_updated) -> Optional[date]:
     if last_updated is None:
         return None
     if isinstance(last_updated, datetime):
-        return (last_updated + timedelta(days=RESPONSE_DUE_DAYS)).date()
-    return last_updated + timedelta(days=RESPONSE_DUE_DAYS)
+        return add_working_days(last_updated.date(), RESPONSE_DUE_DAYS)
+    return add_working_days(last_updated, RESPONSE_DUE_DAYS)
 
 
 def _normalize_datetime(value) -> Optional[datetime]:
@@ -415,7 +430,7 @@ def _helpdesk_where_clauses(
     """Build WHERE clauses for a helpdesk model. Returns None to skip this config."""
     model = config.model
     updated_col = _get_updated_col(config)
-    due_expr = func.date(updated_col) + RESPONSE_DUE_DAYS
+    due_expr = _working_days_due_expr(updated_col, RESPONSE_DUE_DAYS)
     today = date.today()
     clauses = []
 

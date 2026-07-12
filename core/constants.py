@@ -4,7 +4,7 @@ ENV = os.getenv("ENV", "local")
 KV_URL = os.getenv("AZURE_KEY_VAULT_URL", "")
 
 SELF_DECL_DUE_DAYS = 7
-RESPONSE_DUE_DAYS = 2
+RESPONSE_DUE_DAYS = 2  # working days (Mon-Fri)
 DEFAULT_PAGE_SIZE = 10
 
 TYPE_FILTER_MAP = {
