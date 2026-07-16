@@ -15,6 +15,11 @@ from services.declaration_service import (
     get_declaration_user_responses,
     invalidate_declarations_list_cache,
 )
+from services.head_summary_service import (
+    HeadSummaryAccessError,
+    generate_head_summary_export,
+    get_head_summary,
+)
 from services.excel_sync_service import process_declaration_excel
 from storage.storage_ops import (
     upload_bytes,
@@ -200,6 +205,44 @@ async def download_declaration_file(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@router.get("/head-summary")
+async def head_summary(current_user: dict = Depends(get_current_user)):
+    user_id = current_user.get("staff_id") if isinstance(current_user, dict) else None
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    try:
+        summary = await get_head_summary(user_id)
+        return JSONResponse(content={"summary": summary}, status_code=200)
+    except HeadSummaryAccessError as exc:
+        return JSONResponse(
+            content={"error": exc.message}, status_code=exc.status_code
+        )
+
+
+@router.get("/head-summary/export")
+async def export_head_summary(
+    declaration_name: DeclarationType = Query(
+        ..., description="Declaration type: COBCE/COI or R5.18"
+    ),
+    current_user: dict = Depends(get_current_user),
+):
+    user_id = current_user.get("staff_id") if isinstance(current_user, dict) else None
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    try:
+        stream, filename = await generate_head_summary_export(
+            user_id, declaration_name
+        )
+        return StreamingResponse(
+            stream,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except HeadSummaryAccessError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
 @router.get("/declarationtypes")
 async def get_declaration_types():
