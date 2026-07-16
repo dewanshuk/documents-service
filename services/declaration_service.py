@@ -230,6 +230,48 @@ async def save_user_declaration(
         }
 
 
+async def get_user_declaration_status(staff_id: str) -> dict:
+    today = date.today()
+    async with get_session() as session:
+        stmt = (
+            select(UserDeclarationStatus, AnnualDeclaration)
+            .join(AnnualDeclaration, UserDeclarationStatus.declaration_id == AnnualDeclaration.id)
+            .where(
+                UserDeclarationStatus.staff_id == staff_id,
+                UserDeclarationStatus.notify.is_(True),
+                UserDeclarationStatus.status != "completed"
+            )
+            .order_by(AnnualDeclaration.due_date.asc())
+            .limit(1)
+        )
+        row = (await session.execute(stmt)).first()
+
+        if not row:
+            return {"applicable": False}
+
+        uds, decl = row
+        due_date = decl.due_date
+
+        if due_date < today:
+            days = (today - due_date).days
+            message = f"OVERDUE FOR {days:02d} DAYS"
+            overdue = True
+        else:
+            days = (due_date - today).days
+            message = f"DUE IN {days} DAYS"
+            overdue = False
+
+        return {
+            "applicable": True,
+            "message": message,
+            "overdue": overdue,
+            "annual_declaration_id": decl.id,
+            "user_annual_declaration_id": uds.id or f"AD-{staff_id}-{decl.id}",
+            "user_id": staff_id,
+            "days": days
+        }
+
+
 def _apply_declaration_filters(stmt, filters: AnnualDeclarationFilters):
     if filters.declaration_name:
         stmt = stmt.where(

@@ -46,16 +46,18 @@ def year_from_financial_year(financial_year: str) -> int:
 
 
 def parse_record_id(record_id: str) -> tuple[str, str]:
-    """Split STAFF001-<suffix> on the first hyphen."""
-    staff_id, _, suffix = record_id.partition(RECORD_ID_SEP)
-    if not staff_id or not suffix:
-        raise ValueError(f"Invalid record id: {record_id}")
-    return staff_id, suffix
+    """Split prefix-STAFF001-<suffix> correctly."""
+    parts = record_id.split(RECORD_ID_SEP)
+    if len(parts) >= 3 and parts[0] in ("AD", "SD"):
+        return parts[1], RECORD_ID_SEP.join(parts[2:])
+    elif len(parts) >= 2:
+        return parts[0], RECORD_ID_SEP.join(parts[1:])
+    raise ValueError(f"Invalid record id: {record_id}")
 
 
 def build_annual_user_status_id(staff_id: str, annual_declaration_id: str) -> str:
-    """Per-user annual declaration id, e.g. STAFF001-123."""
-    return f"{staff_id}{RECORD_ID_SEP}{annual_declaration_id}"
+    """Per-user annual declaration id, e.g. AD-STAFF001-123."""
+    return f"AD-{staff_id}{RECORD_ID_SEP}{annual_declaration_id}"
 
 
 async def _next_sequence_value(schema: str, seq_key: str) -> int:
@@ -98,7 +100,7 @@ async def next_gift_id(staff_id: str, year: int | None = None) -> str:
 async def next_self_decl_id(staff_id: str, year: int | None = None) -> str:
     year = year or current_year()
     seq = await _next_sequence_value("compliance", f"seq_sd_{year}")
-    return f"{staff_id}-{seq:06d}"
+    return f"SD-{staff_id}{RECORD_ID_SEP}{seq:06d}"
 
 
 async def next_annual_cycle_ref() -> str:
@@ -108,23 +110,11 @@ async def next_annual_cycle_ref() -> str:
 
 
 def _is_annual_user_status_id(record_id: str) -> bool:
-    if RECORD_ID_SEP not in record_id:
-        return False
-    try:
-        _, suffix = parse_record_id(record_id)
-    except ValueError:
-        return False
-    return suffix.isdigit() and len(suffix) != SELF_DECL_SUFFIX_LEN
+    return record_id.startswith("AD-")
 
 
 def _is_self_decl_id(record_id: str) -> bool:
-    if RECORD_ID_SEP not in record_id:
-        return False
-    try:
-        _, suffix = parse_record_id(record_id)
-    except ValueError:
-        return False
-    return len(suffix) == SELF_DECL_SUFFIX_LEN and suffix.isdigit()
+    return record_id.startswith("SD-")
 
 
 async def resolve_record(record_id: str) -> tuple[type, str, str]:

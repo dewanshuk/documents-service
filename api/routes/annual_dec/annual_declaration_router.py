@@ -14,6 +14,7 @@ from services.declaration_service import (
     list_declarations,
     get_declaration_user_responses,
     invalidate_declarations_list_cache,
+    get_user_declaration_status,
 )
 from services.head_summary_service import (
     HeadSummaryAccessError,
@@ -243,6 +244,18 @@ async def export_head_summary(
         )
     except HeadSummaryAccessError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+
+@router.get("/user-declaration-status")
+async def user_declaration_status_endpoint(
+    current_user: dict = Depends(get_current_user),
+):
+    """Get the active annual declaration status for the current user."""
+    try:
+        staff_id = current_user["staff_id"]
+        status_data = await get_user_declaration_status(staff_id)
+        return JSONResponse(content=status_data, status_code=200)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @router.get("/declarationtypes")
 async def get_declaration_types():

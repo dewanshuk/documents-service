@@ -190,7 +190,7 @@ async def get_dashboard(
     async with get_session() as session:
         name_map = await _get_user_name_map(session, staff_ids)
 
-    summary = _build_summary(active_configs, include_annual, count_results)
+    summary = _build_summary(active_configs, include_annual, count_results, tab)
     total = sum(c["total"] for c in count_results)
 
     return {
@@ -565,17 +565,30 @@ async def _count_helpdesk(
     clauses, _, due_expr, today = result
 
     model = config.model
-    stmt = select(
-        func.count().label("total"),
-        func.sum(case(
-            (and_(func.lower(model.OverallStatus) != "completed", due_expr >= today), 1),
-            else_=0,
-        )).label("due"),
-        func.sum(case(
-            (and_(func.lower(model.OverallStatus) != "completed", due_expr < today), 1),
-            else_=0,
-        )).label("overdue"),
-    ).select_from(model)
+    if tab == "all":
+        stmt = select(
+            func.count().label("total"),
+            func.sum(case(
+                (func.lower(model.OverallStatus) == "completed", 1),
+                else_=0,
+            )).label("completed"),
+            func.sum(case(
+                (func.lower(model.OverallStatus) != "completed", 1),
+                else_=0,
+            )).label("in_progress"),
+        ).select_from(model)
+    else:
+        stmt = select(
+            func.count().label("total"),
+            func.sum(case(
+                (and_(func.lower(model.OverallStatus) != "completed", due_expr >= today), 1),
+                else_=0,
+            )).label("due"),
+            func.sum(case(
+                (and_(func.lower(model.OverallStatus) != "completed", due_expr < today), 1),
+                else_=0,
+            )).label("overdue"),
+        ).select_from(model)
     if clauses:
         stmt = stmt.where(*clauses)
 
@@ -583,8 +596,10 @@ async def _count_helpdesk(
         row = (await session.execute(stmt)).one()
         return {
             "total": row.total or 0,
-            "due": int(row.due or 0),
-            "overdue": int(row.overdue or 0),
+            "due": int(getattr(row, "due", 0) or 0),
+            "overdue": int(getattr(row, "overdue", 0) or 0),
+            "completed": int(getattr(row, "completed", 0) or 0),
+            "in_progress": int(getattr(row, "in_progress", 0) or 0),
         }
 
 
@@ -709,44 +724,66 @@ async def _count_annual(
 ) -> dict:
     clauses, _, today = _annual_where_clauses(staff_id, tab, params)
 
-    stmt = (
-        select(
-            func.count().label("total"),
-            func.sum(case(
-                (and_(
-                    UserDeclarationStatus.status != "completed",
-                    AnnualDeclaration.due_date >= today,
-                ), 1),
-                else_=0,
-            )).label("due"),
-            func.sum(case(
-                (and_(
-                    UserDeclarationStatus.status != "completed",
-                    AnnualDeclaration.due_date < today,
-                ), 1),
-                else_=0,
-            )).label("overdue"),
+    if tab == "all":
+        stmt = (
+            select(
+                func.count().label("total"),
+                func.sum(case(
+                    (UserDeclarationStatus.status == "completed", 1),
+                    else_=0,
+                )).label("completed"),
+                func.sum(case(
+                    (UserDeclarationStatus.status != "completed", 1),
+                    else_=0,
+                )).label("in_progress"),
+            )
+            .select_from(UserDeclarationStatus)
+            .join(AnnualDeclaration, UserDeclarationStatus.declaration_id == AnnualDeclaration.id)
+            .where(*clauses)
         )
-        .select_from(UserDeclarationStatus)
-        .join(AnnualDeclaration, UserDeclarationStatus.declaration_id == AnnualDeclaration.id)
-        .where(*clauses)
-    )
+    else:
+        stmt = (
+            select(
+                func.count().label("total"),
+                func.sum(case(
+                    (and_(
+                        UserDeclarationStatus.status != "completed",
+                        AnnualDeclaration.due_date >= today,
+                    ), 1),
+                    else_=0,
+                )).label("due"),
+                func.sum(case(
+                    (and_(
+                        UserDeclarationStatus.status != "completed",
+                        AnnualDeclaration.due_date < today,
+                    ), 1),
+                    else_=0,
+                )).label("overdue"),
+            )
+            .select_from(UserDeclarationStatus)
+            .join(AnnualDeclaration, UserDeclarationStatus.declaration_id == AnnualDeclaration.id)
+            .where(*clauses)
+        )
 
     async with get_session() as session:
         row = (await session.execute(stmt)).one()
         return {
             "total": row.total or 0,
-            "due": int(row.due or 0),
-            "overdue": int(row.overdue or 0),
+            "due": int(getattr(row, "due", 0) or 0),
+            "overdue": int(getattr(row, "overdue", 0) or 0),
+            "completed": int(getattr(row, "completed", 0) or 0),
+            "in_progress": int(getattr(row, "in_progress", 0) or 0),
         }
 
 
 
 
-def _build_summary(active_configs: list[TableConfig], include_annual: bool, count_results: list[dict]) -> dict:
+def _build_summary(active_configs: list[TableConfig], include_annual: bool, count_results: list[dict], tab: str) -> dict:
     type_totals: dict[str, int] = {}
     total_due = 0
     total_overdue = 0
+    total_completed = 0
+    total_in_progress = 0
 
     for i, config in enumerate(active_configs):
         label = config.type_label
@@ -754,22 +791,33 @@ def _build_summary(active_configs: list[TableConfig], include_annual: bool, coun
         type_totals[label] = type_totals.get(label, 0) + stats["total"]
         total_due += stats["due"]
         total_overdue += stats["overdue"]
+        total_completed += stats.get("completed", 0)
+        total_in_progress += stats.get("in_progress", 0)
 
     if include_annual:
         stats = count_results[len(active_configs)]
         type_totals["Annual Declaration"] = stats["total"]
         total_due += stats["due"]
         total_overdue += stats["overdue"]
+        total_completed += stats.get("completed", 0)
+        total_in_progress += stats.get("in_progress", 0)
 
-    return {
-        "total_due": total_due,
-        "total_overdue": total_overdue,
+    summary = {
         "annual_declarations": type_totals.get("Annual Declaration", 0),
         "self_declarations": type_totals.get("Self Declaration", 0),
         "queries": type_totals.get("Query", 0),
         "complaints": type_totals.get("Complaint", 0),
         "gifts": type_totals.get("Gift Declaration", 0),
     }
+
+    if tab == "all":
+        summary["total_completed"] = total_completed
+        summary["total_in_progress"] = total_in_progress
+    else:
+        summary["total_due"] = total_due
+        summary["total_overdue"] = total_overdue
+
+    return summary
 
 
 
