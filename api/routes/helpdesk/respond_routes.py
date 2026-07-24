@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from utils.deps import get_current_user
 from utils.record_ids import resolve_record
 from utils.authorize import is_active_cobce_coi_gift_lead, is_active_complaint_lead, is_active_query_lead
+from utils.email_notifications import notify_record_responded, notify_record_closed
 from db.db_manager import db_manager
 from storage.storage_ops import upload_files, LOCAL_STORAGE_ROOT
 from .route_utils import log_and_json_response
@@ -91,14 +92,54 @@ async def get_conversation(
                 {"error": "Not authorized to view this conversation"},
             )
 
+        if hasattr(record, "QueryId"):
+            record_id_val = record.QueryId
+        elif hasattr(record, "GiftId"):
+            record_id_val = record.GiftId
+        elif hasattr(record, "ComplaintId"):
+            record_id_val = record.ComplaintId
+        elif hasattr(record, "COBCEId"):
+            record_id_val = record.COBCEId
+        elif hasattr(record, "COIId"):
+            record_id_val = record.COIId
+        elif hasattr(record, "R518Id"):
+            record_id_val = record.R518Id
+        else:
+            record_id_val = db_id
+
+        if getattr(record, "Status", None) == "Draft":
+            pending_at_display = "-"
+        elif getattr(record, "OverallStatus", None) != "Closed":
+            pending_at = getattr(record, "PendingAt", None)
+            if pending_at == 1:
+                pending_at_display = "Compliance Team"
+            elif pending_at == 0:
+                pending_at_display = created_by
+            else:
+                pending_at_display = "-"
+        else:
+            pending_at_display = "-"
+
+        details = {
+            "id": record_id_val,
+            "status": getattr(record, "OverallStatus", None),
+            "pendingAt": pending_at_display,
+            "createdBy": created_by,
+            "createdOn": str(getattr(record, "CreatedOn", "")) if getattr(record, "CreatedOn", None) else None,
+            "closureDate": str(getattr(record, "ClosureDate", "")) if getattr(record, "ClosureDate", None) else None,
+            "closedBy": getattr(record, "ClosedBy", None),
+            "workflowStatus": getattr(record, "Status", None),
+        }
+
         json_path = getattr(record, "ResponseJsonPath", None)
         if not json_path:
             return JSONResponse(
-                content={"record_id": db_id, "conversation": []},
+                content={"id": record_id_val, "details": details, "conversation": []},
                 status_code=200,
             )
 
         conv = await _load_conversation(json_path)
+        conv["details"] = details
         return JSONResponse(content=conv, status_code=200)
     except Exception as e:
         return log_and_json_response(
@@ -189,6 +230,10 @@ async def respond_to_record(
             "LastUpdatedOn": db_timestamp_now(),
         })
 
+        asyncio.create_task(notify_record_responded(
+            record_type, db_id, staff_id, created_by,
+        ))
+
         return log_and_json_response(
             staff_id, {"record_id": record_id},
             "/respond/{record_id}", "POST", 200,
@@ -251,6 +296,11 @@ async def close_record(
             updates["Status"] = "Completed"
 
         await db_manager.update(model, db_id, updates)
+
+        created_by = getattr(record, "CreatedBy", "")
+        asyncio.create_task(notify_record_closed(
+            record_type, db_id, staff_id, created_by,
+        ))
 
         return log_and_json_response(
             staff_id, {"record_id": record_id},

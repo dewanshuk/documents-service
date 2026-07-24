@@ -1,3 +1,4 @@
+import asyncio
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query, Body
@@ -7,6 +8,7 @@ from sqlalchemy import select, func, or_
 from utils.deps import get_current_user
 from utils.record_ids import resolve_record
 from utils.authorize import is_active_cobce_coi_gift_lead, is_active_complaint_lead, is_active_query_lead
+from utils.email_notifications import notify_record_assigned
 from core.constants import RECORD_TYPE_LEAD_MAP
 from db.db_manager import get_session, db_manager
 from db.models.helpdesk import User
@@ -165,6 +167,11 @@ async def assign_admin(
                 )
 
         await db_manager.update(model, db_id, {"AssignedTo": staff_id})
+
+        created_by = getattr(record, "CreatedBy", "")
+        asyncio.create_task(notify_record_assigned(
+            record_type, db_id, staff_id, caller_id, created_by,
+        ))
 
         return log_and_json_response(
             caller_id, {"record_id": record_id, "staff_id": staff_id},

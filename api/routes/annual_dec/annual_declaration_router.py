@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from fastapi.responses import StreamingResponse, JSONResponse
 from datetime import datetime
@@ -29,6 +31,7 @@ from storage.storage_ops import (
 )
 from utils.deps import get_current_user
 from utils.record_ids import next_annual_cycle_ref
+from utils.email_notifications import notify_annual_declaration_users
 
 router = APIRouter()
 
@@ -172,6 +175,14 @@ async def upload_declaration_file(
             },
         )
         await invalidate_declarations_list_cache()
+
+        asyncio.create_task(notify_annual_declaration_users(
+            declaration_id=declaration_id,
+            declaration_name=declaration.declaration_name,
+            financial_year=declaration.financial_year,
+            due_date=str(declaration.due_date),
+        ))
+
         return JSONResponse(
             content={
                 "message": "File uploaded and processed successfully",

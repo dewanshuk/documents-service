@@ -1,9 +1,12 @@
+import asyncio
+
 from fastapi import UploadFile, File, Form, APIRouter, Depends
 from typing import List
 
 from utils.deps import get_current_user
 from utils.helpers import now_ist, db_timestamp_now, validate_word_limit
 from utils.record_ids import next_complaint_id
+from utils.email_notifications import notify_record_created
 from db.db_manager import db_manager
 from db.models.helpdesk import Complaints
 from db.validators.comp_help import QueryType
@@ -84,6 +87,10 @@ async def raise_complaint(
                 "ResponseJsonPath": json_path,
             },
         )
+
+        asyncio.create_task(notify_record_created(
+            "complaint", complaint_id, staff_id,
+        ))
 
         return log_and_json_response(
             staff_id,

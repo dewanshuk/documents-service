@@ -1,3 +1,4 @@
+import asyncio
 import json
 from typing import List, Optional
 
@@ -9,6 +10,7 @@ from services.self_declaration_service import (
 )
 from utils.deps import get_current_user
 from utils.authorize import is_active_cobce_coi_gift_lead
+from utils.email_notifications import notify_record_created
 from .self_declaration_config import SELF_DECLARATION_FORM_CONFIG
 from .route_utils import log_and_json_response
 
@@ -115,6 +117,13 @@ async def save_self_declaration_endpoint(
             if status == "submit"
             else "Draft saved successfully"
         )
+
+        if status == "submit" and result.get("id"):
+            record_type = declaration_type.lower()
+            asyncio.create_task(notify_record_created(
+                record_type, result["id"], staff_id,
+            ))
+
         return log_and_json_response(
             staff_id,
             {

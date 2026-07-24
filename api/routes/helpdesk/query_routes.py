@@ -1,3 +1,4 @@
+import asyncio
 import traceback
 
 from fastapi import UploadFile, File, Form, APIRouter, Depends
@@ -20,6 +21,11 @@ from utils.helpers import (
     validate_word_limit,
     get_model_by_id,
     now_ist,
+)
+from utils.email_notifications import (
+    notify_record_created,
+    notify_record_responded,
+    notify_record_closed,
 )
 from .route_utils import log_and_json_response
 from core.openapi_tags import TAG_QUERY
@@ -92,9 +98,10 @@ async def view_query(query_id: str, user: dict = Depends(get_current_user)):
                 "status": record.OverallStatus,
                 "pendingAt": pending_at_display,
                 "createdBy": record.CreatedBy,
-                "createdOn": str(record.CreatedOn),
+                "createdOn": str(record.CreatedOn) if record.CreatedOn else None,
                 "closureDate": str(record.ClosureDate) if record.ClosureDate else None,
-                "workflowStatus": record.Status if hasattr(record, "Status") else None,
+                "closedBy": getattr(record, "ClosedBy", None),
+                "workflowStatus": getattr(record, "Status", None),
             },
             "conversation": data,
         }
@@ -190,6 +197,10 @@ async def raise_query(
                 "ResponseJsonPath": json_path,
             },
         )
+
+        asyncio.create_task(notify_record_created(
+            "query", query_id, user["staff_id"],
+        ))
 
         return log_and_json_response(
             user["staff_id"],
@@ -372,6 +383,11 @@ async def respond(
         await append_json(record.ResponseJsonPath, entry)
 
         await db_manager.update(model, query_id, {"PendingAt": next_pending})
+
+        asyncio.create_task(notify_record_responded(
+            record_type, query_id, user["staff_id"], record.CreatedBy,
+        ))
+
         return log_and_json_response(
             user["staff_id"],
             {"query_id": query_id},
@@ -496,6 +512,11 @@ async def close_query(
                 "ClosureDate": db_timestamp_now(),
             },
         )
+
+        asyncio.create_task(notify_record_closed(
+            record_type, query_id, user["staff_id"], record.CreatedBy,
+        ))
+
         return log_and_json_response(
             user["staff_id"],
             {"query_id": query_id, "comment": comment},
