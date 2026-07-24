@@ -244,6 +244,16 @@ class DBManager:
             await session.commit()
             return True
 
+    # ----- RAW SQL -----
+    async def raw(
+        self,
+        sql: str,
+        params: Optional[Dict[str, Any]] = None,
+    ) -> List[Dict[str, Any]]:
+        async with get_session() as session:
+            result = await session.execute(text(sql), params or {})
+            return [dict(row) for row in result.mappings().all()]
+
 
 # Singleton instance
 db_manager = DBManager()
