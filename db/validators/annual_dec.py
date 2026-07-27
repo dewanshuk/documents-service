@@ -16,6 +16,17 @@ class AnnualDeclarationCreate(BaseModel):
     model_config = ConfigDict(use_enum_values=True)
 
 
+class AnnualDeclarationUpdate(BaseModel):
+    declaration_name: Optional[DeclarationType] = None
+    financial_year: Optional[str] = None
+    assigned_date: Optional[date] = None
+    due_date: Optional[date] = None
+    activity_closure_date: Optional[date] = None
+    status: Optional[str] = None
+
+    model_config = ConfigDict(use_enum_values=True)
+
+
 class AnnualDeclarationFilters(BaseModel):
     declaration_name: Optional[str] = None
     financial_year: Optional[str] = None

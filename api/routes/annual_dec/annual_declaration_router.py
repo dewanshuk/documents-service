@@ -8,12 +8,15 @@ from db.db_manager import db_manager
 from db.models import AnnualDeclaration, DeclarationType, as_declaration_name
 from db.validators import (
     AnnualDeclarationCreate,
+    AnnualDeclarationUpdate,
     AnnualDeclarationFilters,
     SaveDeclarationRequest,
 )
 from services.declaration_service import (
     save_user_declaration,
     list_declarations,
+    update_declaration,
+    export_declarations,
     get_declaration_user_responses,
     invalidate_declarations_list_cache,
     get_user_declaration_status,
@@ -88,6 +91,45 @@ async def list_declarations_endpoint(
 
     data = await list_declarations(filters, page, page_size)
     return JSONResponse(content=data, status_code=200)
+
+
+@router.put("/edit-declaration/{declaration_id}")
+async def edit_declaration_endpoint(
+    declaration_id: str,
+    payload: AnnualDeclarationUpdate,
+    current_user: dict = Depends(get_current_user),
+):
+    if not current_user.get("is_master_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    try:
+        data = await update_declaration(declaration_id, payload)
+        return JSONResponse(
+            content={"message": "Declaration updated successfully", **data},
+            status_code=200,
+        )
+    except ValueError as e:
+        detail = str(e)
+        status = 404 if detail == "Declaration not found" else 400
+        if detail == "Declaration cycle already exists":
+            status = 409
+        raise HTTPException(status_code=status, detail=detail)
+
+
+@router.get("/export-declarations")
+async def export_declarations_endpoint(
+    filters: AnnualDeclarationFilters = Depends(),
+    current_user: dict = Depends(get_current_user),
+):
+    if not current_user.get("is_master_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    stream, filename = await export_declarations(filters)
+    return StreamingResponse(
+        stream,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/declaration-responses/{declaration_id}")

@@ -2,8 +2,10 @@ import hashlib
 import json
 from datetime import date, datetime
 from enum import Enum
+from io import BytesIO
 from uuid import UUID
 
+from openpyxl import Workbook
 from sqlalchemy import select, and_, cast, String, func, delete
 from sqlalchemy.orm import selectinload
 
@@ -26,8 +28,20 @@ from utils.record_ids import (
 
 LIST_DECLARATIONS_CACHE_PREFIX = "declarations:list:"
 LIST_DECLARATIONS_CACHE_TTL = 300
+EXPORT_DECLARATION_HEADERS = [
+    "ID",
+    "Declaration Name",
+    "Financial Year",
+    "Assigned Date",
+    "Due Date",
+    "Activity Closure Date",
+    "Status",
+    "Pending Count",
+    "Total Count",
+]
+
 from storage.storage_ops import init_json
-from db.validators import AnnualDeclarationFilters
+from db.validators import AnnualDeclarationFilters, AnnualDeclarationUpdate
 from api.routes.annual_dec.question_config import (
     CONFLICT_RESPONSES,
     get_question_config,
@@ -411,6 +425,109 @@ async def list_declarations(
         }
         await cache_set(cache_key, result, ttl=LIST_DECLARATIONS_CACHE_TTL)
         return result
+
+
+async def update_declaration(
+    declaration_id: str,
+    payload: AnnualDeclarationUpdate,
+) -> dict:
+    """Admin-only: update editable fields on an annual declaration."""
+    updates = payload.model_dump(exclude_unset=True)
+    if not updates:
+        raise ValueError("No fields to update")
+
+    if "declaration_name" in updates:
+        updates["declaration_name"] = as_declaration_name(updates["declaration_name"])
+
+    async with get_session() as session:
+        declaration = await session.get(AnnualDeclaration, declaration_id)
+        if not declaration:
+            raise ValueError("Declaration not found")
+
+        new_name = updates.get("declaration_name", declaration.declaration_name)
+        new_fy = updates.get("financial_year", declaration.financial_year)
+        if new_name != declaration.declaration_name or new_fy != declaration.financial_year:
+            existing = await session.scalar(
+                select(func.count())
+                .select_from(AnnualDeclaration)
+                .where(
+                    AnnualDeclaration.declaration_name == new_name,
+                    AnnualDeclaration.financial_year == new_fy,
+                    AnnualDeclaration.id != declaration_id,
+                )
+            )
+            if existing:
+                raise ValueError("Declaration cycle already exists")
+
+        for key, value in updates.items():
+            setattr(declaration, key, value)
+
+        await session.commit()
+        await session.refresh(declaration)
+
+        counts = (
+            await _count_user_statuses(session, [declaration.id])
+        ).get(declaration.id, {"pending_count": 0, "total_count": 0})
+
+        await invalidate_declarations_list_cache()
+        return {
+            "id": declaration.id,
+            "declaration_name": as_declaration_name(declaration.declaration_name),
+            "financial_year": declaration.financial_year,
+            "assigned_date": declaration.assigned_date.isoformat(),
+            "due_date": declaration.due_date.isoformat(),
+            "activity_closure_date": declaration.activity_closure_date.isoformat(),
+            "status": declaration.status,
+            "pending_count": counts["pending_count"],
+            "total_count": counts["total_count"],
+        }
+
+
+async def export_declarations(
+    filters: AnnualDeclarationFilters,
+) -> tuple[BytesIO, str]:
+    """Admin-only: export filtered annual declarations to Excel."""
+    async with get_session() as session:
+        stmt = select(AnnualDeclaration)
+        stmt = _apply_declaration_filters(stmt, filters)
+        stmt = stmt.order_by(AnnualDeclaration.last_updated_at.desc())
+        declarations = (await session.execute(stmt)).scalars().all()
+
+        counts_by_id = await _count_user_statuses(
+            session, [decl.id for decl in declarations]
+        )
+
+    wb = Workbook(write_only=True)
+    ws = wb.create_sheet(title="Annual Declarations")
+    ws.append(EXPORT_DECLARATION_HEADERS)
+
+    for decl in declarations:
+        counts = counts_by_id.get(decl.id, {"pending_count": 0, "total_count": 0})
+        ws.append(
+            [
+                decl.id,
+                as_declaration_name(decl.declaration_name),
+                decl.financial_year,
+                decl.assigned_date.isoformat() if decl.assigned_date else "",
+                decl.due_date.isoformat() if decl.due_date else "",
+                (
+                    decl.activity_closure_date.isoformat()
+                    if decl.activity_closure_date
+                    else ""
+                ),
+                decl.status,
+                counts["pending_count"],
+                counts["total_count"],
+            ]
+        )
+
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+
+    timestamp = datetime.now(IST).strftime("%Y%m%d_%H%M%S")
+    filename = f"annual_declarations_export_{timestamp}.xlsx"
+    return output, filename
 
 
 async def get_declaration_user_responses(
