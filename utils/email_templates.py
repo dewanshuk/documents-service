@@ -4,9 +4,7 @@ Provide small helper functions that return ready-to-send HTML strings
 so all emails have a consistent look and feel.
 """
 from typing import List, Tuple
-
-
-from typing import List, Tuple
+from core.constants import BASE_URL
 
 
 def _base_html(
@@ -14,6 +12,8 @@ def _base_html(
     preface: str,
     details: List[Tuple[str, str]],
     footer_note: str = "",
+    action_url: str = "",
+    action_text: str = "View Dashboard",
 ) -> str:
 
     details_html = "".join(
@@ -73,6 +73,27 @@ def _base_html(
         </div>
         """
         if footer_note
+        else ""
+    )
+
+    action_html = (
+        f"""
+        <div style="margin-top:20px; text-align:center;">
+            <a href="{action_url}" style="
+                display:inline-block;
+                background:#2E5BEA;
+                color:#FFFFFF;
+                font-size:14px;
+                font-weight:700;
+                text-decoration:none;
+                padding:12px 24px;
+                border-radius:4px;
+            ">
+                {action_text}
+            </a>
+        </div>
+        """
+        if action_url
         else ""
     )
 
@@ -202,6 +223,8 @@ def _base_html(
 
                 </table>
 
+                {action_html}
+
                 {footer_html}
 
                 <div style="
@@ -270,6 +293,8 @@ def record_created(
     requester_vertical: str = "",
     requester_division: str = "",
     requester_department: str = "",
+    title_text: str = "",
+    raw_record_type: str = "",
 ) -> str:
     title = f"New {record_type} — {record_id}"
     preface = (
@@ -277,15 +302,16 @@ def record_created(
         f"{requester_name} ({requester_staff_id})."
     )
     details = [
-        ("Type", record_type),
-        ("ID", record_id),
+        ("Type ID", f"{record_type} - {record_id}"),
         ("Requester", f"{requester_name} ({requester_staff_id})"),
-        ("Vertical", requester_vertical or "-"),
-        ("Division", requester_division or "-"),
-        ("Department", requester_department or "-"),
+        ("Vertical/Division/Deptt", f"{requester_vertical or '-'}/{requester_division or '-'}/{requester_department or '-'}"),
         ("Status", "Pending"),
     ]
-    return _base_html(title, preface, details)
+    if title_text:
+        details.insert(1, ("Title", title_text))
+    
+    url_type = raw_record_type or record_type.lower()
+    return _base_html(title, preface, details, action_url=f"{BASE_URL}/{url_type}/{record_id}", action_text="View Dashboard")
 
 
 def record_assigned(
@@ -297,25 +323,30 @@ def record_assigned(
     requester_vertical: str = "",
     requester_division: str = "",
     requester_department: str = "",
+    title_text: str = "",
+    raw_record_type: str = "",
 ) -> str:
     title = f"{record_type} Assigned — {record_id}"
     preface = (
         f"You have been assigned to {record_type} {record_id}."
     )
     details = [
-        ("Type", record_type),
-        ("ID", record_id),
+        ("Type ID", f"{record_type} - {record_id}"),
         ("Assigned To", assigned_to_name),
         ("Requester", f"{requester_name} ({requester_staff_id})"),
-        ("Vertical", requester_vertical or "-"),
-        ("Division", requester_division or "-"),
-        ("Department", requester_department or "-"),
+        ("Vertical/Division/Deptt", f"{requester_vertical or '-'}/{requester_division or '-'}/{requester_department or '-'}"),
     ]
+    if title_text:
+        details.insert(1, ("Title", title_text))
+        
+    url_type = raw_record_type or record_type.lower()
     return _base_html(
         title,
         preface,
         details,
         footer_note="Please review and take action on the assigned record.",
+        action_url=f"{BASE_URL}/{url_type}/{record_id}",
+        action_text="View Dashboard"
     )
 
 
@@ -328,22 +359,32 @@ def record_responded(
     requester_vertical: str = "",
     requester_division: str = "",
     requester_department: str = "",
+    title_text: str = "",
+    response_text: str = "",
+    raw_record_type: str = "",
 ) -> str:
     title = f"{record_type} Response — {record_id}"
     preface = (
         f"A new response has been added to {record_type} "
         f"{record_id} by {responder_name}."
     )
+    
+    if len(response_text) > 100:
+        response_text = response_text[:97] + "..."
+
     details = [
-        ("Type", record_type),
-        ("ID", record_id),
+        ("Type ID", f"{record_type} - {record_id}"),
         ("Responded By", responder_name),
         ("Requester", f"{requester_name} ({requester_staff_id})"),
-        ("Vertical", requester_vertical or "-"),
-        ("Division", requester_division or "-"),
-        ("Department", requester_department or "-"),
+        ("Vertical/Division/Deptt", f"{requester_vertical or '-'}/{requester_division or '-'}/{requester_department or '-'}"),
     ]
-    return _base_html(title, preface, details)
+    if title_text:
+        details.insert(1, ("Title", title_text))
+    if response_text:
+        details.append(("Response", response_text))
+
+    url_type = raw_record_type or record_type.lower()
+    return _base_html(title, preface, details, action_url=f"{BASE_URL}/{url_type}/{record_id}", action_text="View Dashboard")
 
 
 def record_closed(
@@ -355,6 +396,8 @@ def record_closed(
     requester_vertical: str = "",
     requester_division: str = "",
     requester_department: str = "",
+    title_text: str = "",
+    raw_record_type: str = "",
 ) -> str:
     title = f"{record_type} Closed — {record_id}"
     preface = (
@@ -362,15 +405,17 @@ def record_closed(
         f"{closed_by_name}."
     )
     details = [
-        ("Type", record_type),
-        ("ID", record_id),
+        ("Type ID", f"{record_type} - {record_id}"),
         ("Closed By", closed_by_name),
         ("Requester", f"{requester_name} ({requester_staff_id})"),
-        ("Vertical", requester_vertical or "-"),
-        ("Division", requester_division or "-"),
-        ("Department", requester_department or "-"),
+        ("Vertical/Division/Deptt", f"{requester_vertical or '-'}/{requester_division or '-'}/{requester_department or '-'}"),
+        ("Status", "Closed"),
     ]
-    return _base_html(title, preface, details)
+    if title_text:
+        details.insert(1, ("Title", title_text))
+
+    url_type = raw_record_type or record_type.lower()
+    return _base_html(title, preface, details, action_url=f"{BASE_URL}/{url_type}/{record_id}", action_text="View Dashboard")
 
 
 def annual_declaration_assigned(

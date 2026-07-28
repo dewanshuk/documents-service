@@ -188,7 +188,7 @@ async def submit_cobce(
         )
 
         asyncio.create_task(notify_record_created(
-            "cobce", id, user["staff_id"],
+            "cobce", id, user["staff_id"], title=record.SubType,
         ))
 
         return log_and_json_response(

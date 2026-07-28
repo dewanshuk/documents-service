@@ -199,7 +199,7 @@ async def raise_query(
         )
 
         asyncio.create_task(notify_record_created(
-            "query", query_id, user["staff_id"],
+            "query", query_id, user["staff_id"], title=title,
         ))
 
         return log_and_json_response(
@@ -384,8 +384,11 @@ async def respond(
 
         await db_manager.update(model, query_id, {"PendingAt": next_pending})
 
+        title = getattr(record, "Title", getattr(record, "ComplaintType", getattr(record, "SubType", "")))
         asyncio.create_task(notify_record_responded(
             record_type, query_id, user["staff_id"], record.CreatedBy,
+            title=title,
+            response_text=message,
         ))
 
         return log_and_json_response(
@@ -513,8 +516,10 @@ async def close_query(
             },
         )
 
+        title = getattr(record, "Title", getattr(record, "ComplaintType", getattr(record, "SubType", "")))
         asyncio.create_task(notify_record_closed(
             record_type, query_id, user["staff_id"], record.CreatedBy,
+            title=title,
         ))
 
         return log_and_json_response(

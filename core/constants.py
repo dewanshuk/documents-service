@@ -2,6 +2,7 @@ import os
 
 ENV = os.getenv("ENV", "local")
 KV_URL = os.getenv("AZURE_KEY_VAULT_URL", "")
+BASE_URL = os.getenv("BASE_URL", "https://compliance.com")
 
 SELF_DECL_DUE_DAYS = 7
 RESPONSE_DUE_DAYS = 2  # working days (Mon-Fri)

@@ -89,6 +89,7 @@ async def notify_record_created(
     record_type: str,
     record_id: str,
     creator_staff_id: str,
+    title: str = "",
 ) -> None:
     try:
         label = RECORD_TYPE_LABELS.get(record_type, record_type)
@@ -103,6 +104,8 @@ async def notify_record_created(
             requester_vertical=user["vertical"],
             requester_division=user["division"],
             requester_department=user["department"],
+            title_text=title,
+            raw_record_type=record_type,
         )
 
         recipients = list(
@@ -130,6 +133,7 @@ async def notify_record_assigned(
     assigned_to_staff_id: str,
     assigned_by_staff_id: str,
     creator_staff_id: str,
+    title: str = "",
 ) -> None:
     try:
         label = RECORD_TYPE_LABELS.get(record_type, record_type)
@@ -145,6 +149,8 @@ async def notify_record_assigned(
             requester_vertical=creator["vertical"],
             requester_division=creator["division"],
             requester_department=creator["department"],
+            title_text=title,
+            raw_record_type=record_type,
         )
 
         await send_email(
@@ -168,6 +174,8 @@ async def notify_record_responded(
     record_id: str,
     responder_staff_id: str,
     creator_staff_id: str,
+    title: str = "",
+    response_text: str = "",
 ) -> None:
     try:
         label = RECORD_TYPE_LABELS.get(record_type, record_type)
@@ -183,6 +191,9 @@ async def notify_record_responded(
             requester_vertical=creator["vertical"],
             requester_division=creator["division"],
             requester_department=creator["department"],
+            title_text=title,
+            response_text=response_text,
+            raw_record_type=record_type,
         )
 
         recipients = list(
@@ -209,6 +220,7 @@ async def notify_record_closed(
     record_id: str,
     closed_by_staff_id: str,
     creator_staff_id: str,
+    title: str = "",
 ) -> None:
     try:
         label = RECORD_TYPE_LABELS.get(record_type, record_type)
@@ -224,6 +236,8 @@ async def notify_record_closed(
             requester_vertical=creator["vertical"],
             requester_division=creator["division"],
             requester_department=creator["department"],
+            title_text=title,
+            raw_record_type=record_type,
         )
 
         recipients = list(

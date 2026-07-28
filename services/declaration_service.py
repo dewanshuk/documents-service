@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import json
 from datetime import date, datetime
@@ -25,6 +26,7 @@ from utils.record_ids import (
     build_annual_user_status_id,
     next_self_decl_id,
 )
+from services.dashboard_service import _format_staff_display, _get_user_name_map
 
 LIST_DECLARATIONS_CACHE_PREFIX = "declarations:list:"
 LIST_DECLARATIONS_CACHE_TTL = 300
@@ -394,8 +396,12 @@ async def list_declarations(
         )
         declarations = (await session.execute(decl_stmt)).scalars().all()
 
-        counts_by_id = await _count_user_statuses(
-            session, [decl.id for decl in declarations]
+        staff_ids = {
+            decl.last_uploaded_by for decl in declarations if decl.last_uploaded_by
+        }
+        counts_by_id, name_map = await asyncio.gather(
+            _count_user_statuses(session, [decl.id for decl in declarations]),
+            _get_user_name_map(session, staff_ids),
         )
 
         items = []
@@ -414,6 +420,12 @@ async def list_declarations(
                     "status": decl.status,
                     "pending_count": counts["pending_count"],
                     "total_count": counts["total_count"],
+                    "updated_by": _format_staff_display(decl.last_uploaded_by, name_map),
+                    "updated_on": (
+                        decl.last_updated_at.isoformat()
+                        if decl.last_updated_at
+                        else None
+                    ),
                 }
             )
 

@@ -121,7 +121,7 @@ async def save_self_declaration_endpoint(
         if status == "submit" and result.get("id"):
             record_type = declaration_type.lower()
             asyncio.create_task(notify_record_created(
-                record_type, result["id"], staff_id,
+                record_type, result["id"], staff_id, title=subType,
             ))
 
         return log_and_json_response(

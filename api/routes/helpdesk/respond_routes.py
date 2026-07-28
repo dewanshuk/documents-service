@@ -230,8 +230,11 @@ async def respond_to_record(
             "LastUpdatedOn": db_timestamp_now(),
         })
 
+        title = getattr(record, "Title", getattr(record, "ComplaintType", getattr(record, "SubType", "")))
         asyncio.create_task(notify_record_responded(
             record_type, db_id, staff_id, created_by,
+            title=title,
+            response_text=message,
         ))
 
         return log_and_json_response(
@@ -298,8 +301,10 @@ async def close_record(
         await db_manager.update(model, db_id, updates)
 
         created_by = getattr(record, "CreatedBy", "")
+        title = getattr(record, "Title", getattr(record, "ComplaintType", getattr(record, "SubType", "")))
         asyncio.create_task(notify_record_closed(
             record_type, db_id, staff_id, created_by,
+            title=title,
         ))
 
         return log_and_json_response(

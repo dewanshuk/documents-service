@@ -102,7 +102,7 @@ async def raise_gift(
         )
 
         asyncio.create_task(notify_record_created(
-            "gift", gift_id, staff_id,
+            "gift", gift_id, staff_id, title="Gift Declaration",
         ))
 
         return log_and_json_response(

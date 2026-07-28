@@ -169,8 +169,10 @@ async def assign_admin(
         await db_manager.update(model, db_id, {"AssignedTo": staff_id})
 
         created_by = getattr(record, "CreatedBy", "")
+        title = getattr(record, "Title", getattr(record, "ComplaintType", getattr(record, "SubType", "")))
         asyncio.create_task(notify_record_assigned(
             record_type, db_id, staff_id, caller_id, created_by,
+            title=title,
         ))
 
         return log_and_json_response(
