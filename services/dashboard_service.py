@@ -4,7 +4,7 @@ from datetime import date, datetime, timedelta
 from io import BytesIO
 from typing import Optional
 
-from sqlalchemy import select, and_, or_, func, case
+from sqlalchemy import select, and_, or_, func, case, false
 from openpyxl import Workbook
 
 from core.constants import (
@@ -619,8 +619,13 @@ def _annual_where_clauses(staff_id: str, tab: str, params: FilterParams):
         UserDeclarationStatus.staff_id == staff_id,
     ]
 
-    if tab == "pending":
-        clauses.append(UserDeclarationStatus.status != "completed")
+    # Annual declarations are visible only in the due view for the user's own record.
+    if tab != "pending":
+        clauses.append(false())
+        return clauses, updated_col, today
+
+    clauses.append(UserDeclarationStatus.status != "completed")
+    clauses.append(AnnualDeclaration.due_date >= today)
 
     if params.sub_type:
         clauses.append(
