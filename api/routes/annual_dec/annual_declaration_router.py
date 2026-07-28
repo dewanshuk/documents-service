@@ -26,7 +26,7 @@ from services.head_summary_service import (
     generate_head_summary_export,
     get_head_summary,
 )
-from services.excel_sync_service import process_declaration_excel
+from services.excel_sync_service import process_declaration_excel, generate_declaration_status_excel
 from storage.storage_ops import (
     upload_bytes,
     download_to_stream,
@@ -256,6 +256,32 @@ async def download_declaration_file(
         )
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Declaration file not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/download-declaration-file/{declaration_id}")
+async def download_declaration_file_by_id(
+    declaration_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """Download the previously uploaded file for a declaration by id, populated with latest status."""
+    if not current_user.get("is_master_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    try:
+        stream, filename = await generate_declaration_status_excel(declaration_id)
+        return StreamingResponse(
+            stream,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={
+                "Content-Disposition": (
+                    f'attachment; filename="{filename}"'
+                )
+            },
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
