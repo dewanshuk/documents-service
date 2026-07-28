@@ -98,13 +98,29 @@ def _base_html(
     )
 
     return f"""
-<html>
-
+<!DOCTYPE html>
+<html lang="en" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <!--[if mso]>
+    <xml>
+      <o:OfficeDocumentSettings>
+        <o:AllowPNG/>
+        <o:PixelsPerInch>96</o:PixelsPerInch>
+      </o:OfficeDocumentSettings>
+    </xml>
+    <![endif]-->
+</head>
 <body style="
     margin:0;
     padding:0;
+    width:100% !important;
     background:#F3F5F7;
     font-family:'Segoe UI',Arial,sans-serif;
+    -webkit-text-size-adjust:100%;
+    -ms-text-size-adjust:100%;
 ">
 
 <table
@@ -113,23 +129,21 @@ def _base_html(
     cellpadding="0"
     cellspacing="0"
     border="0"
-    style="background:#F3F5F7;"
+    style="background:#F3F5F7; width:100%;"
 >
 <tr>
-<td align="center" style="padding:25px;">
+<td align="center" style="padding:0;">
 
     <table
         role="presentation"
-        width="550"
+        width="100%"
         cellpadding="0"
         cellspacing="0"
         border="0"
         style="
-            width:550px;
+            width:100%;
             background:#FFFFFF;
-            border:1px solid #DCE6F0;
-            border-radius:6px;
-            overflow:hidden;
+            border:none;
         "
     >
 
@@ -272,7 +286,7 @@ def record_created(
         details.insert(1, ("Title", title_text))
     
     url_type = raw_record_type or record_type.lower()
-    return _base_html(title, preface, details, action_url=f"{BASE_URL}/{url_type}/{record_id}", action_text="View Dashboard")
+    return _base_html(title, preface, details, action_url=f"{BASE_URL}/{url_type}/{record_id}", action_text="Click here to access")
 
 
 def record_assigned(
@@ -309,7 +323,7 @@ def record_assigned(
         details,
         footer_note="Please review and take action on the assigned record.",
         action_url=f"{BASE_URL}/{url_type}/{record_id}",
-        action_text="View Dashboard"
+        action_text="Click here to access"
     )
 
 
@@ -349,7 +363,7 @@ def record_responded(
         details.append(("Response", response_text))
 
     url_type = raw_record_type or record_type.lower()
-    return _base_html(title, preface, details, action_url=f"{BASE_URL}/{url_type}/{record_id}", action_text="View Dashboard")
+    return _base_html(title, preface, details, action_url=f"{BASE_URL}/{url_type}/{record_id}", action_text="Click here to access")
 
 
 def record_closed(
@@ -382,7 +396,7 @@ def record_closed(
         details.insert(1, ("Title", title_text))
 
     url_type = raw_record_type or record_type.lower()
-    return _base_html(title, preface, details, action_url=f"{BASE_URL}/{url_type}/{record_id}", action_text="View Dashboard")
+    return _base_html(title, preface, details, action_url=f"{BASE_URL}/{url_type}/{record_id}", action_text="Click here to access")
 
 
 def annual_declaration_assigned(
