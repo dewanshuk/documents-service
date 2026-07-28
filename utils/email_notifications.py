@@ -9,6 +9,7 @@ import logging
 from db.db_manager import db_manager
 
 from utils.email_manager import send_email
+from core.constants import BASE_URL
 from utils.email_templates import (
     record_created,
     record_assigned,
@@ -283,12 +284,22 @@ async def notify_annual_declaration_users(
         for staff_id in staff_ids:
             try:
                 user = await _get_user_details(staff_id)
+                due_date_str = due_date
+                try:
+                    from datetime import datetime
+                    if isinstance(due_date, str):
+                        dt = datetime.strptime(due_date, "%Y-%m-%d")
+                    else:
+                        dt = due_date
+                    due_date_str = dt.strftime("%d %b %Y").upper()
+                except Exception:
+                    pass
+
                 html = annual_declaration_assigned(
                     declaration_name=declaration_name,
                     financial_year=financial_year,
-                    due_date=due_date,
-                    employee_name=user["name"],
-                    employee_staff_id=user["staff_id"],
+                    due_date=due_date_str,
+                    action_url=f"{BASE_URL}/annual-declaration"
                 )
                 await send_email(
                     recipients=[staff_id],

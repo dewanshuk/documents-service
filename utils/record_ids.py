@@ -56,7 +56,9 @@ def parse_record_id(record_id: str) -> tuple[str, str]:
 
 
 def build_annual_user_status_id(staff_id: str, annual_declaration_id: str) -> str:
-    """Per-user annual declaration id, e.g. AD-STAFF001-123."""
+    """Per-user annual declaration id, e.g. AD-STAFF001-0001."""
+    if annual_declaration_id.startswith("AD-"):
+        annual_declaration_id = annual_declaration_id[3:]
     return f"AD-{staff_id}{RECORD_ID_SEP}{annual_declaration_id}"
 
 
@@ -104,9 +106,9 @@ async def next_self_decl_id(staff_id: str, year: int | None = None) -> str:
 
 
 async def next_annual_cycle_ref() -> str:
-    """Admin cycle id, zero-padded e.g. 0001, 0123 — shared by all users in that cycle."""
+    """Admin cycle id, zero-padded e.g. AD-0001, AD-0123 — shared by all users in that cycle."""
     seq = await _next_sequence_value("annual_declarations", "seq_ad_cycle")
-    return f"{seq:04d}"
+    return f"AD-{seq:04d}"
 
 
 def _is_annual_user_status_id(record_id: str) -> bool:

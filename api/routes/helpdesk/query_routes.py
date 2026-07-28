@@ -384,7 +384,7 @@ async def respond(
 
         await db_manager.update(model, query_id, {"PendingAt": next_pending})
 
-        title = getattr(record, "Title", getattr(record, "ComplaintType", getattr(record, "SubType", "")))
+        title = getattr(record, "Title", getattr(record, "ComplaintDetails", getattr(record, "Person", getattr(record, "SubType", ""))))
         asyncio.create_task(notify_record_responded(
             record_type, query_id, user["staff_id"], record.CreatedBy,
             title=title,
@@ -516,7 +516,7 @@ async def close_query(
             },
         )
 
-        title = getattr(record, "Title", getattr(record, "ComplaintType", getattr(record, "SubType", "")))
+        title = getattr(record, "Title", getattr(record, "ComplaintDetails", getattr(record, "Person", getattr(record, "SubType", ""))))
         asyncio.create_task(notify_record_closed(
             record_type, query_id, user["staff_id"], record.CreatedBy,
             title=title,

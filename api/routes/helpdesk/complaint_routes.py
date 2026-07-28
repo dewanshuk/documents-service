@@ -89,7 +89,7 @@ async def raise_complaint(
         )
 
         asyncio.create_task(notify_record_created(
-            "complaint", complaint_id, staff_id, title=complaintType.value,
+            "complaint", complaint_id, staff_id, title=complaintDetails,
         ))
 
         return log_and_json_response(

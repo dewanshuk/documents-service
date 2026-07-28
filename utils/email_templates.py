@@ -13,7 +13,7 @@ def _base_html(
     details: List[Tuple[str, str]],
     footer_note: str = "",
     action_url: str = "",
-    action_text: str = "View Dashboard",
+    action_text: str = "Click here to access",
 ) -> str:
 
     details_html = "".join(
@@ -147,13 +147,6 @@ def _base_html(
                 ">
                     {title}
                 </div>
-
-                <div style="
-                    color:#D7E6F7;
-                    font-size:12px;
-                ">
-                    Audit Management Notification
-                </div>
             </td>
         </tr>
 
@@ -175,15 +168,6 @@ def _base_html(
                     </div>
                 </div>
 
-                <div style="
-                    color:#0F4C81;
-                    font-size:16px;
-                    font-weight:700;
-                    margin-bottom:8px;
-                ">
-                    Audit Details
-                </div>
-
                 <table
                     width="100%"
                     cellpadding="0"
@@ -195,30 +179,6 @@ def _base_html(
                     "
                 >
 
-                    <tr>
-
-                        <th style="
-                            background:#2E5BEA;
-                            color:#FFFFFF;
-                            text-align:left;
-                            padding:12px;
-                            font-size:13px;
-                        ">
-                            Field
-                        </th>
-
-                        <th style="
-                            background:#2E5BEA;
-                            color:#FFFFFF;
-                            text-align:left;
-                            padding:12px;
-                            font-size:13px;
-                        ">
-                            Details
-                        </th>
-
-                    </tr>
-
                     {details_html}
 
                 </table>
@@ -227,35 +187,34 @@ def _base_html(
 
                 {footer_html}
 
-                <div style="
-                    margin-top:8px;
-                    padding-top:8px;
-                    border-top:1px solid #DCE6F0;
-                ">
-
-                    <div style="
-                        color:#0F4C81;
-                        font-size:14px;
-                        font-weight:700;
-                        margin-bottom:4px;
-                    ">
-                        Audit &amp; Compliance Team
-                    </div>
-
-                    <div style="
-                        color:#000000;
-                        font-size:12px;
-                        line-height:1.5;
-                    ">
-                        Supporting governance, risk management,
-                        compliance excellence and continuous audit improvement.
-                    </div>
-
-                </div>
-
             </td>
         </tr>
-
+    <tr>
+        <td style="
+        padding:20px 30px;
+        border-top:1px solid #e5e7eb;">
+ 
+            <div style="
+            font-size:14px;
+            font-weight:700;
+            color:#0f4c81;
+            font-family:'Segoe UI',Arial,sans-serif;
+            margin-bottom:4px;">
+                Thanks &amp; Regards,<br>
+                Compliance Team
+            </div>
+ 
+            <div style="
+            font-size:12px;
+            line-height:1.5;
+            color:#6b7280;
+            font-family:'Segoe UI',Arial,sans-serif;">
+                Supporting governance, risk management,
+                compliance excellence and continuous audit improvement.
+            </div>
+ 
+        </td>
+    </tr>
     </table>
 
 </td>
@@ -308,6 +267,8 @@ def record_created(
         ("Status", "Pending"),
     ]
     if title_text:
+        if len(title_text) > 100:
+            title_text = title_text[:97] + "..."
         details.insert(1, ("Title", title_text))
     
     url_type = raw_record_type or record_type.lower()
@@ -337,6 +298,8 @@ def record_assigned(
         ("Vertical/Division/Deptt", f"{requester_vertical or '-'}/{requester_division or '-'}/{requester_department or '-'}"),
     ]
     if title_text:
+        if len(title_text) > 100:
+            title_text = title_text[:97] + "..."
         details.insert(1, ("Title", title_text))
         
     url_type = raw_record_type or record_type.lower()
@@ -379,6 +342,8 @@ def record_responded(
         ("Vertical/Division/Deptt", f"{requester_vertical or '-'}/{requester_division or '-'}/{requester_department or '-'}"),
     ]
     if title_text:
+        if len(title_text) > 100:
+            title_text = title_text[:97] + "..."
         details.insert(1, ("Title", title_text))
     if response_text:
         details.append(("Response", response_text))
@@ -412,6 +377,8 @@ def record_closed(
         ("Status", "Closed"),
     ]
     if title_text:
+        if len(title_text) > 100:
+            title_text = title_text[:97] + "..."
         details.insert(1, ("Title", title_text))
 
     url_type = raw_record_type or record_type.lower()
@@ -422,8 +389,7 @@ def annual_declaration_assigned(
     declaration_name: str,
     financial_year: str,
     due_date: str,
-    employee_name: str,
-    employee_staff_id: str,
+    action_url: str = "",
 ) -> str:
     title = f"Annual Declaration — {declaration_name}"
     preface = (
@@ -434,8 +400,6 @@ def annual_declaration_assigned(
         ("Declaration", declaration_name),
         ("Financial Year", financial_year),
         ("Due Date", str(due_date)),
-        ("Employee Name", employee_name),
-        ("Staff ID", employee_staff_id),
     ]
     return _base_html(
         title,
@@ -445,4 +409,5 @@ def annual_declaration_assigned(
             "Please complete and submit your declaration before "
             "the due date."
         ),
+        action_url=action_url,
     )
