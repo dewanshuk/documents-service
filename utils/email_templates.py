@@ -78,20 +78,25 @@ def _base_html(
 
     action_html = (
         f"""
-        <div style="margin-top:20px; text-align:center;">
-            <a href="{action_url}" style="
-                display:inline-block;
-                background:#2E5BEA;
-                color:#FFFFFF;
-                font-size:14px;
-                font-weight:700;
-                text-decoration:none;
-                padding:12px 24px;
-                border-radius:4px;
-            ">
-                {action_text}
-            </a>
-        </div>
+        <table width="100%" border="0" cellspacing="0" cellpadding="0" style="margin-bottom:20px;">
+            <tr>
+                <td align="center">
+                    <div>
+                        <!--[if mso]>
+                        <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{action_url}" style="height:44px;v-text-anchor:middle;width:220px;" arcsize="10%" stroke="f" fillcolor="#2E5BEA">
+                            <w:anchorlock/>
+                            <center style="color:#ffffff;font-family:'Segoe UI', Arial, sans-serif;font-size:14px;font-weight:700;">{action_text}</center>
+                        </v:roundrect>
+                        <![endif]-->
+                        <!--[if !mso]><!-->
+                        <a href="{action_url}" target="_blank" style="display: inline-block; background-color: #2E5BEA; color: #ffffff; font-size: 14px; font-family: 'Segoe UI', Arial, sans-serif; font-weight: 700; text-decoration: none; border-radius: 4px; padding: 12px 24px;">
+                            {action_text}
+                        </a>
+                        <!--<![endif]-->
+                    </div>
+                </td>
+            </tr>
+        </table>
         """
         if action_url
         else ""
@@ -182,6 +187,8 @@ def _base_html(
                     </div>
                 </div>
 
+                {action_html}
+
                 <table
                     width="100%"
                     cellpadding="0"
@@ -196,8 +203,6 @@ def _base_html(
                     {details_html}
 
                 </table>
-
-                {action_html}
 
                 {footer_html}
 
@@ -275,7 +280,6 @@ def record_created(
         f"{requester_name} ({requester_staff_id})."
     )
     details = [
-        ("Type ID", f"{record_type} - {record_id}"),
         ("Requester", f"{requester_name} ({requester_staff_id})"),
         ("Vertical/Division/Deptt", f"{requester_vertical or '-'}/{requester_division or '-'}/{requester_department or '-'}"),
         ("Status", "Pending"),
@@ -306,7 +310,6 @@ def record_assigned(
         f"You have been assigned to {record_type} {record_id}."
     )
     details = [
-        ("Type ID", f"{record_type} - {record_id}"),
         ("Assigned To", assigned_to_name),
         ("Requester", f"{requester_name} ({requester_staff_id})"),
         ("Vertical/Division/Deptt", f"{requester_vertical or '-'}/{requester_division or '-'}/{requester_department or '-'}"),
@@ -350,7 +353,6 @@ def record_responded(
         response_text = response_text[:97] + "..."
 
     details = [
-        ("Type ID", f"{record_type} - {record_id}"),
         ("Responded By", responder_name),
         ("Requester", f"{requester_name} ({requester_staff_id})"),
         ("Vertical/Division/Deptt", f"{requester_vertical or '-'}/{requester_division or '-'}/{requester_department or '-'}"),
@@ -384,7 +386,6 @@ def record_closed(
         f"{closed_by_name}."
     )
     details = [
-        ("Type ID", f"{record_type} - {record_id}"),
         ("Closed By", closed_by_name),
         ("Requester", f"{requester_name} ({requester_staff_id})"),
         ("Vertical/Division/Deptt", f"{requester_vertical or '-'}/{requester_division or '-'}/{requester_department or '-'}"),
