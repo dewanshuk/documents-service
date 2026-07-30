@@ -7,6 +7,18 @@ from typing import List, Tuple
 from core.constants import BASE_URL
 
 
+import base64
+import os
+
+
+def _get_base64_image(filename: str) -> str:
+    path = os.path.join("assests", filename)
+    try:
+        with open(path, "rb") as f:
+            return base64.b64encode(f.read()).decode("utf-8")
+    except Exception:
+        return ""
+
 def _base_html(
     title: str,
     preface: str,
@@ -77,28 +89,24 @@ def _base_html(
     )
 
     action_html = (
-        f"""
-        <table width="100%" border="0" cellspacing="0" cellpadding="0" style="margin-bottom:20px;">
-            <tr>
-                <td align="center">
-                    <div>
-                        <!--[if mso]>
-                        <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{action_url}" style="height:44px;v-text-anchor:middle;width:220px;" arcsize="10%" stroke="f" fillcolor="#2E5BEA">
-                            <w:anchorlock/>
-                            <center style="color:#ffffff;font-family:'Segoe UI', Arial, sans-serif;font-size:14px;font-weight:700;">{action_text}</center>
-                        </v:roundrect>
-                        <![endif]-->
-                        <!--[if !mso]><!-->
-                        <a href="{action_url}" target="_blank" style="display: inline-block; background-color: #2E5BEA; color: #ffffff; font-size: 14px; font-family: 'Segoe UI', Arial, sans-serif; font-weight: 700; text-decoration: none; border-radius: 4px; padding: 12px 24px;">
-                            {action_text}
-                        </a>
-                        <!--<![endif]-->
-                    </div>
-                </td>
-            </tr>
-        </table>
-        """
+        f""" <span style="color: #000000;">To view more details, please visit <a href="{action_url}" style="color: #2E5BEA; text-decoration: underline; font-weight: 700;">Compliance Connect</a>.</span>"""
         if action_url
+        else ""
+    )
+
+    logo_left_b64 = _get_base64_image("pinterest-logo-png-2011.png")
+    logo_right_b64 = _get_base64_image("pinterest-logo-png-2011 - Copy.png")
+
+    img_left = (
+        f'<img src="data:image/png;base64,{logo_left_b64}" alt="Logo Left" '
+        f'style="display:block; border:none; outline:none; text-decoration:none;">'
+        if logo_left_b64
+        else ""
+    )
+    img_right = (
+        f'<img src="data:image/png;base64,{logo_right_b64}" alt="Logo Right" '
+        f'style="display:block; border:none; outline:none; text-decoration:none;">'
+        if logo_right_b64
         else ""
     )
 
@@ -153,16 +161,30 @@ def _base_html(
     >
 
         <tr>
+            <td style="background:#FFFFFF; padding:16px 24px 12px 24px;">
+                <table width="100%" border="0" cellspacing="0" cellpadding="0">
+                    <tr>
+                        <td align="left" valign="middle">
+                            {img_left}
+                        </td>
+                        <td align="right" valign="middle">
+                            {img_right}
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+
+        <tr>
             <td style="
                 background:#0F4C81;
-                padding:24px;
+                padding:20px 24px;
             ">
                 <div style="
                     color:#FFFFFF;
                     font-size:26px;
                     font-weight:700;
                     line-height:1.3;
-                    margin-bottom:6px;
                 ">
                     {title}
                 </div>
@@ -176,18 +198,16 @@ def _base_html(
                     background:#F5F7FA;
                     border-left:6px solid #2E5BEA;
                     padding:16px;
-                    margin-bottom:15px;
+                    margin-bottom:20px;
                 ">
                     <div style="
                         color:#000000;
-                        font-size:14px;
+                        font-size:15px;
                         line-height:1.6;
                     ">
-                        {preface}
+                        {preface}{action_html}
                     </div>
                 </div>
-
-                {action_html}
 
                 <table
                     width="100%"

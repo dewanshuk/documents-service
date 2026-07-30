@@ -68,18 +68,18 @@ async def _get_user_details(staff_id: str) -> dict:
     }
 
 
-async def _get_lead_staff_ids(record_type: str) -> list[str]:
+async def _get_lead_emails(record_type: str) -> list[str]:
     flag = LEAD_FLAG_FOR_TYPE.get(record_type)
     if not flag:
         return []
     rows = await db_manager.raw(
         f"""
-        SELECT staff_id
+        SELECT email
         FROM users.users
         WHERE status = 'active' AND {flag} = true
         """,
     )
-    return [r["staff_id"] for r in rows]
+    return [r["email"] for r in rows if r.get("email")]
 
 
 # =====================================================
@@ -95,7 +95,7 @@ async def notify_record_created(
     try:
         label = RECORD_TYPE_LABELS.get(record_type, record_type)
         user = await _get_user_details(creator_staff_id)
-        leads = await _get_lead_staff_ids(record_type)
+        leads = await _get_lead_emails(record_type)
 
         html = record_created(
             record_type=label,
@@ -110,7 +110,7 @@ async def notify_record_created(
         )
 
         recipients = list(
-            dict.fromkeys([creator_staff_id] + leads)
+            dict.fromkeys([user["email"]] + leads)
         )
 
         await send_email(

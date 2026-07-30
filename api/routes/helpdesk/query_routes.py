@@ -211,6 +211,7 @@ async def raise_query(
             {
                 "details": f"Query has been created with query_id: {query_id}",
                 "status": "Pending",
+                "query_id": query_id,
             },
         )
     except Exception as e:
