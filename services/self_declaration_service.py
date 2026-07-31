@@ -10,7 +10,7 @@ from db.models.helpdesk import (
     COIDeclarations,
 )
 from db.validators.comp_help import validate_coi_form
-from storage.storage_ops import init_json, load_json, upload_files
+from storage.storage_ops import init_json, load_json, upload_files, resolve_file_urls
 from utils.actor_display import format_actor_name, format_pending_at
 from utils.helpers import db_timestamp_now, now_ist
 from utils.record_ids import next_self_decl_id, resolve_record
@@ -127,6 +127,7 @@ async def _submit_cobce_record(
             {
                 "actor": "User",
                 "actorId": staff_id,
+                "actor_name": await format_actor_name(staff_id),
                 "dateTime": now.isoformat(),
                 "data": {
                     "subType": sub_type,
@@ -303,6 +304,7 @@ async def _save_coi(
             {
                 "actor": "User",
                 "actorId": staff_id,
+                "actor_name": await format_actor_name(staff_id),
                 "dateTime": now.isoformat(),
                 "data": {
                     "subType": record.SubType,
@@ -418,6 +420,8 @@ async def get_self_declaration_by_id(
     if record.ResponseJsonPath:
         try:
             data["conversation"] = await load_json(record.ResponseJsonPath)
+            for entry in data["conversation"].get("conversation", []) or []:
+                entry["files"] = await resolve_file_urls(entry.get("files"))
         except Exception:
             data["conversation"] = None
 

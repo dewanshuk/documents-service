@@ -6,6 +6,7 @@ from typing import List
 from utils.deps import get_current_user
 from utils.helpers import now_ist, db_timestamp_now
 from utils.record_ids import next_self_decl_id
+from utils.actor_display import format_actor_name
 from utils.email_notifications import notify_record_created
 from db.db_manager import db_manager
 from db.models.helpdesk import COBCEDeclarations
@@ -164,6 +165,7 @@ async def submit_cobce(
                 {
                     "actor": "User",
                     "actorId": user["staff_id"],
+                    "actor_name": await format_actor_name(user["staff_id"]),
                     "dateTime": now.isoformat(),
                     "data": {
                         "subType": record.SubType,

@@ -6,6 +6,7 @@ from typing import List
 from utils.deps import get_current_user
 from utils.helpers import now_ist, db_timestamp_now
 from utils.record_ids import next_gift_id
+from utils.actor_display import format_actor_name
 from utils.email_notifications import notify_record_created
 from db.db_manager import db_manager
 from db.models.helpdesk import GiftDeclarations
@@ -67,6 +68,7 @@ async def raise_gift(
                 {
                     "actor": "User",
                     "actorId": staff_id,
+                    "actor_name": await format_actor_name(staff_id),
                     "dateTime": now.isoformat(),
                     "data": {
                         "status": status,

@@ -12,7 +12,7 @@ from utils.authorize import is_active_cobce_coi_gift_lead, is_active_complaint_l
 from utils.actor_display import format_actor_name, format_pending_at
 from utils.email_notifications import notify_record_responded, notify_record_closed
 from db.db_manager import db_manager
-from storage.storage_ops import upload_files, LOCAL_STORAGE_ROOT
+from storage.storage_ops import upload_files, resolve_file_urls, LOCAL_STORAGE_ROOT
 from .route_utils import log_and_json_response
 from utils.helpers import now_ist, db_timestamp_now, validate_word_limit
 from core.openapi_tags import TAG_COMMON
@@ -134,6 +134,8 @@ async def get_conversation(
 
         conv = await _load_conversation(json_path)
         conv["details"] = details
+        for entry in conv.get("conversation", []) or []:
+            entry["files"] = await resolve_file_urls(entry.get("files"))
         return JSONResponse(content=conv, status_code=200)
     except Exception as e:
         return log_and_json_response(
@@ -206,6 +208,7 @@ async def respond_to_record(
         conv["conversation"].append({
             "actor": actor,
             "actorId": staff_id,
+            "actor_name": await format_actor_name(staff_id),
             "dateTime": now.isoformat(),
             "message": message,
             "files": file_paths,
@@ -312,6 +315,7 @@ async def close_record(
             conv["conversation"].append({
                 "actor": "Compliance Team",
                 "actorId": staff_id,
+                "actor_name": await format_actor_name(staff_id),
                 "dateTime": now_ist().isoformat(),
                 "message": remarks,
                 "files": [],

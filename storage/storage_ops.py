@@ -135,5 +135,20 @@ async def generate_blob_sas_url(
     return path.as_uri()
 
 
+async def resolve_file_urls(file_paths: Optional[list[str]]) -> list[str]:
+    """Convert stored compliance file paths into temporary SAS download URLs."""
+    urls: list[str] = []
+    for path in file_paths or []:
+        blob_name = path.replace("/compliance/", "", 1)
+        try:
+            url = await generate_blob_sas_url(
+                container="ecp", blob_name=blob_name, expiry_minutes=15
+            )
+        except FileNotFoundError:
+            url = path
+        urls.append(url)
+    return urls
+
+
 async def close_clients():
     pass

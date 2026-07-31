@@ -9,7 +9,7 @@ from utils.record_ids import next_query_id
 from db.db_manager import db_manager
 from db.models.helpdesk import ComplianceQuery, COBCEDeclarations, COIDeclarations
 from db.validators.comp_help import QueryType
-from storage.storage_ops import upload_files, init_json, append_json, read_json
+from storage.storage_ops import upload_files, init_json, append_json, read_json, resolve_file_urls
 from utils.authorize import (
     is_active_cobce_coi_gift_lead,
     is_active_complaint_lead,
@@ -67,6 +67,9 @@ async def view_query(query_id: str, user: dict = Depends(get_current_user)):
             if record.ResponseJsonPath
             else None
         )
+        if data:
+            for entry in data.get("conversation", []) or []:
+                entry["files"] = await resolve_file_urls(entry.get("files"))
 
         if hasattr(record, "QueryId"):
             record_id = record.QueryId
@@ -170,6 +173,7 @@ async def raise_query(
                 {
                     "actor": "User",
                     "actorId": user["staff_id"],
+                    "actor_name": await format_actor_name(user["staff_id"]),
                     "dateTime": now.isoformat(),
                     "data": {
                         "title": title,
@@ -367,6 +371,7 @@ async def respond(
         entry = {
             "actor": actor,
             "actorId": user["staff_id"],
+            "actor_name": await format_actor_name(user["staff_id"]),
             "dateTime": now_ist().isoformat(),
             "data": {"comment": message},
             "files": file_paths,
@@ -492,6 +497,7 @@ async def close_query(
         entry = {
             "actor": "Compliance Team",
             "actorId": user["staff_id"],
+            "actor_name": await format_actor_name(user["staff_id"]),
             "dateTime": now_ist().isoformat(),
             "data": {"comment": comment},
             "files": [],
