@@ -178,33 +178,6 @@ class COIDeclarations(Base):
     ResponseJsonPath: Mapped[str | None]
 
 
-class R518Declarations(Base):
-    __tablename__ = "r518_declarations"
-    __table_args__ = {"schema": "compliance"}
-
-    R518Id: Mapped[str] = mapped_column(String(80), primary_key=True)
-
-    SubType: Mapped[str]
-    FormData: Mapped[dict] = mapped_column(JSON, nullable=False)
-
-    Status: Mapped[str]  # Draft / In-Progress / Completed
-
-    CreatedOn: Mapped[datetime]
-    CreatedBy: Mapped[str]
-
-    OverallStatus: Mapped[str | None]
-    PendingAt: Mapped[int | None]
-    AssignedTo: Mapped[str | None] = mapped_column(String(255), nullable=True)
-
-    ClosureDate: Mapped[datetime | None]
-    ClosedBy: Mapped[str | None]
-    ClosedRemarks: Mapped[str | None]
-    LastUpdatedOn: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-
-    ResponseJsonPath: Mapped[str | None]
-
 class RecentUserRecords(Base):
     __tablename__ = "recent_user_records"
     __table_args__ = {"schema": "compliance"}

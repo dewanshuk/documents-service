@@ -20,7 +20,6 @@ from db.models.helpdesk import (
     Complaints,
     COBCEDeclarations,
     COIDeclarations,
-    R518Declarations,
 )
 from db.models.annual_dec import (
     AnnualDeclaration,
@@ -91,14 +90,6 @@ HELPDESK_CONFIGS = [
         pk_field="COIId",
         search_fields=("COIId",),
         sub_type_value="COI",
-        updated_field="LastUpdatedOn",
-    ),
-    TableConfig(
-        model=R518Declarations,
-        type_label="Self Declaration",
-        pk_field="R518Id",
-        search_fields=("R518Id",),
-        sub_type_value="R5.18",
         updated_field="LastUpdatedOn",
     ),
 ]

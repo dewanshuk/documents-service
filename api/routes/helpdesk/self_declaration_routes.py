@@ -37,7 +37,7 @@ async def get_self_declaration_endpoint(
     record_id: str,
     user: dict = Depends(get_current_user),
 ):
-    """Get COBCE / COI / R5.18 self-declaration by id (draft or submitted)."""
+    """Get COBCE / COI self-declaration by id (draft or submitted)."""
     staff_id = user["staff_id"]
     is_admin = user.get("is_master_admin", False) or await is_active_cobce_coi_gift_lead(
         staff_id

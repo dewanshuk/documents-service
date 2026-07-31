@@ -8,7 +8,6 @@ from db.db_manager import db_manager
 from db.models.helpdesk import (
     COBCEDeclarations,
     COIDeclarations,
-    R518Declarations,
 )
 from db.validators.comp_help import validate_coi_form
 from storage.storage_ops import init_json, load_json, upload_files
@@ -16,7 +15,7 @@ from utils.actor_display import format_actor_name, format_pending_at
 from utils.helpers import db_timestamp_now, now_ist
 from utils.record_ids import next_self_decl_id, resolve_record
 
-SELF_DECLARATION_TYPES = frozenset({"cobce", "coi", "r518"})
+SELF_DECLARATION_TYPES = frozenset({"cobce", "coi"})
 
 
 def _coi_validation_errors(sub_type: str, form_data: dict) -> list[str]:
@@ -387,7 +386,7 @@ async def get_self_declaration_by_id(
     staff_id: str,
     is_admin: bool,
 ) -> dict[str, Any]:
-    """Fetch COBCE / COI / R5.18 self-declaration by composite record id."""
+    """Fetch COBCE / COI self-declaration by composite record id."""
     try:
         _, record_type, db_id = await resolve_record(record_id)
     except ValueError as exc:
@@ -398,10 +397,8 @@ async def get_self_declaration_by_id(
 
     if record_type == "cobce":
         record = await db_manager.get(COBCEDeclarations, db_id)
-    elif record_type == "coi":
-        record = await db_manager.get(COIDeclarations, db_id)
     else:
-        record = await db_manager.get(R518Declarations, db_id)
+        record = await db_manager.get(COIDeclarations, db_id)
 
     if not record:
         raise ValueError("Declaration not found")

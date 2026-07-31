@@ -11,7 +11,6 @@ from db.models.helpdesk import (
     GiftDeclarations,
     COBCEDeclarations,
     COIDeclarations,
-    R518Declarations,
 )
 
 MODEL_BY_TYPE = {
@@ -20,13 +19,11 @@ MODEL_BY_TYPE = {
     "complaint": Complaints,
     "cobce": COBCEDeclarations,
     "coi": COIDeclarations,
-    "r518": R518Declarations,
 }
 
 SELF_DECL_MODELS = [
     ("cobce", COBCEDeclarations),
     ("coi", COIDeclarations),
-    ("r518", R518Declarations),
 ]
 
 RECORD_ID_SEP = "-"
@@ -97,8 +94,6 @@ async def next_gift_id(staff_id: str, year: int | None = None) -> str:
     year = year or current_year()
     seq = await _next_sequence_value("compliance", f"seq_gft_{year}")
     return f"GFT{staff_id}-{seq:06d}"
-
-
 async def next_self_decl_id(staff_id: str, year: int | None = None) -> str:
     year = year or current_year()
     seq = await _next_sequence_value("compliance", f"seq_sd_{year}")

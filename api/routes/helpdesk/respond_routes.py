@@ -25,7 +25,6 @@ ADMIN_ROLE_CHECKERS = {
     "complaint": is_active_complaint_lead,
     "cobce": is_active_cobce_coi_gift_lead,
     "coi": is_active_cobce_coi_gift_lead,
-    "r518": is_active_cobce_coi_gift_lead,
 }
 
 CREATED_BY_FIELD = {
@@ -34,7 +33,6 @@ CREATED_BY_FIELD = {
     "complaint": "CreatedBy",
     "cobce": "CreatedBy",
     "coi": "CreatedBy",
-    "r518": "CreatedBy",
 }
 
 
@@ -103,8 +101,6 @@ async def get_conversation(
             record_id_val = record.COBCEId
         elif hasattr(record, "COIId"):
             record_id_val = record.COIId
-        elif hasattr(record, "R518Id"):
-            record_id_val = record.R518Id
         else:
             record_id_val = db_id
 

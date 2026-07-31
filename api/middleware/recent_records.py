@@ -82,10 +82,6 @@ async def _log_helpdesk_record(staff_id: str, record_id: str) -> None:
         record_type = "Self Declaration"
         title = "COI Declaration"
         sub_type = getattr(record, "SubType", "COI")
-    elif hasattr(record, "R518Id"):
-        record_type = "Self Declaration"
-        title = "R518 Declaration"
-        sub_type = getattr(record, "SubType", "R518")
 
     await log_recent_record(
         user_id=staff_id,

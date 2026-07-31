@@ -24,7 +24,6 @@ ADMIN_ROLE_CHECKERS = {
     "complaint": is_active_complaint_lead,
     "cobce": is_active_cobce_coi_gift_lead,
     "coi": is_active_cobce_coi_gift_lead,
-    "r518": is_active_cobce_coi_gift_lead,
 }
 
 

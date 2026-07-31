@@ -34,7 +34,7 @@ OPENAPI_TAGS = [
     },
     {
         "name": TAG_SELF_DECLARATION,
-        "description": "COBCE, COI, and R5.18 self-declarations.",
+        "description": "COBCE and COI self-declarations.",
     },
     {
         "name": TAG_ADMINS,

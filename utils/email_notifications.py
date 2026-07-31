@@ -25,7 +25,6 @@ RECORD_TYPE_LABELS = {
     "gift": "Gift Declaration",
     "cobce": "Self Declaration (COBCE)",
     "coi": "Self Declaration (COI)",
-    "r518": "Self Declaration (R5.18)",
 }
 
 LEAD_FLAG_FOR_TYPE = {
@@ -34,7 +33,6 @@ LEAD_FLAG_FOR_TYPE = {
     "gift": "is_cobce_coi_gift_lead",
     "cobce": "is_cobce_coi_gift_lead",
     "coi": "is_cobce_coi_gift_lead",
-    "r518": "is_cobce_coi_gift_lead",
 }
 
 

@@ -270,7 +270,6 @@ async def init_db(Base):
             "complaints",
             "cobce_declarations",
             "coi_declarations",
-            "r518_declarations",
         ]
         for tbl in helpdesk_tables:
             await conn.execute(text(
