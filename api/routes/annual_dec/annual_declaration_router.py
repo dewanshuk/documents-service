@@ -26,7 +26,11 @@ from services.head_summary_service import (
     generate_head_summary_export,
     get_head_summary,
 )
-from services.excel_sync_service import process_declaration_excel, generate_declaration_status_excel
+from services.excel_sync_service import (
+    process_declaration_excel,
+    generate_declaration_status_excel,
+    InvalidStaffIdsError,
+)
 from storage.storage_ops import (
     upload_bytes,
     download_to_stream,
@@ -197,6 +201,14 @@ async def upload_declaration_file(
         file_content = await file.read()
         try:
             process_result = await process_declaration_excel(declaration_id, file_content)
+        except InvalidStaffIdsError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "message": "Invalid staff_ids",
+                    "invalid_staff_ids": exc.invalid_ids,
+                },
+            ) from exc
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except Exception as exc:

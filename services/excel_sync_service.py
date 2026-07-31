@@ -16,6 +16,12 @@ from storage.storage_ops import download_to_stream
 BATCH_SIZE = 500
 
 
+class InvalidStaffIdsError(ValueError):
+    def __init__(self, invalid_ids: list[str]):
+        self.invalid_ids = invalid_ids
+        super().__init__(f"Invalid staff_ids: {', '.join(invalid_ids)}")
+
+
 def _iter_excel_rows(file_bytes: bytes):
     wb = load_workbook(BytesIO(file_bytes), read_only=True, data_only=True)
     ws = wb.active
@@ -61,7 +67,20 @@ async def process_declaration_excel(declaration_id: str, file_bytes: bytes) -> d
     for row in pending_rows:
         sid = row[staff_col]
         if sid:
-            excel_staff_ids.add(str(sid))
+            excel_staff_ids.add(str(sid).strip())
+
+    if excel_staff_ids:
+        async with get_session() as session:
+            existing_ids = set(
+                (
+                    await session.execute(
+                        select(User.staff_id).where(User.staff_id.in_(excel_staff_ids))
+                    )
+                ).scalars().all()
+            )
+        invalid_ids = sorted(excel_staff_ids - existing_ids)
+        if invalid_ids:
+            raise InvalidStaffIdsError(invalid_ids)
 
     processed = 0
     excluded = 0
@@ -74,6 +93,7 @@ async def process_declaration_excel(declaration_id: str, file_bytes: bytes) -> d
                 staff_id = row[staff_col]
                 if not staff_id:
                     continue
+                staff_id = str(staff_id).strip()
 
                 notify_val = True
                 if notify_col is not None:
@@ -84,7 +104,7 @@ async def process_declaration_excel(declaration_id: str, file_bytes: bytes) -> d
                         select(UserDeclarationStatus).where(
                             and_(
                                 UserDeclarationStatus.declaration_id == declaration_id,
-                                UserDeclarationStatus.staff_id == str(staff_id),
+                                UserDeclarationStatus.staff_id == staff_id,
                             )
                         )
                     )
@@ -96,10 +116,10 @@ async def process_declaration_excel(declaration_id: str, file_bytes: bytes) -> d
                     session.add(
                         UserDeclarationStatus(
                             id=build_annual_user_status_id(
-                                str(staff_id), annual_declaration_id
+                                staff_id, annual_declaration_id
                             ),
                             declaration_id=declaration_id,
-                            staff_id=str(staff_id),
+                            staff_id=staff_id,
                             status="not_started",
                             notify=notify_val,
                         )
