@@ -12,6 +12,7 @@ from db.models.helpdesk import (
 )
 from db.validators.comp_help import validate_coi_form
 from storage.storage_ops import init_json, load_json, upload_files
+from utils.actor_display import format_actor_name, format_pending_at
 from utils.helpers import db_timestamp_now, now_ist
 from utils.record_ids import next_self_decl_id, resolve_record
 
@@ -368,6 +369,7 @@ def _serialize_self_declaration_record(
         "closureDate": (
             record.ClosureDate.isoformat() if record.ClosureDate else None
         ),
+        "closedBy": record.ClosedBy,
         "responseJsonPath": record.ResponseJsonPath,
     }
 
@@ -408,6 +410,13 @@ async def get_self_declaration_by_id(
         raise ValueError("Unauthorized")
 
     data = _serialize_self_declaration_record(record_type, record, db_id)
+
+    if record.Status == "Draft" or record.OverallStatus == "Closed":
+        data["pendingAt"] = "-"
+    else:
+        data["pendingAt"] = await format_pending_at(record.PendingAt, record.CreatedBy)
+    data["actor_name"] = await format_actor_name(record.CreatedBy)
+    data["closed_by_name"] = await format_actor_name(record.ClosedBy)
 
     if record.ResponseJsonPath:
         try:

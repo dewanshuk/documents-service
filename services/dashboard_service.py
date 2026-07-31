@@ -122,7 +122,8 @@ class FilterParams:
 
 async def get_dashboard(
     staff_id: str,
-    is_admin: bool,
+    visible_types: set[str],
+    admin_types: set[str],
     tab: str = "pending",
     search: Optional[str] = None,
     type_filter: Optional[str] = None,
@@ -156,14 +157,19 @@ async def get_dashboard(
                 session, params.search
             )
 
-    active_configs = [c for c in HELPDESK_CONFIGS if c.type_label in active_types]
+    active_configs = [
+        c for c in HELPDESK_CONFIGS
+        if c.type_label in active_types and c.type_label in visible_types
+    ]
     include_annual = "Annual Declaration" in active_types
 
     data_tasks = [
-        _collect_helpdesk(c, staff_id, is_admin, tab, params) for c in active_configs
+        _collect_helpdesk(c, staff_id, c.type_label in admin_types, tab, params)
+        for c in active_configs
     ]
     count_tasks = [
-        _count_helpdesk(c, staff_id, is_admin, tab, params) for c in active_configs
+        _count_helpdesk(c, staff_id, c.type_label in admin_types, tab, params)
+        for c in active_configs
     ]
     if include_annual:
         data_tasks.append(_collect_annual(staff_id, tab, params))
@@ -194,7 +200,7 @@ async def get_dashboard(
     total = sum(c["total"] for c in count_results)
 
     return {
-        "items": [_finalize_item(item, name_map, is_admin) for item in page_items],
+        "items": [_finalize_item(item, name_map, admin_types) for item in page_items],
         "total": total,
         "page": page,
         "page_size": page_size,
@@ -204,7 +210,8 @@ async def get_dashboard(
 
 async def get_dashboard_export_file(
     staff_id: str,
-    is_admin: bool,
+    visible_types: set[str],
+    admin_types: set[str],
     tab: str = "pending",
     search: Optional[str] = None,
     type_filter: Optional[str] = None,
@@ -235,11 +242,15 @@ async def get_dashboard_export_file(
                 session, params.search
             )
 
-    active_configs = [c for c in HELPDESK_CONFIGS if c.type_label in active_types]
+    active_configs = [
+        c for c in HELPDESK_CONFIGS
+        if c.type_label in active_types and c.type_label in visible_types
+    ]
     include_annual = "Annual Declaration" in active_types
 
     tasks = [
-        _collect_helpdesk(c, staff_id, is_admin, tab, params) for c in active_configs
+        _collect_helpdesk(c, staff_id, c.type_label in admin_types, tab, params)
+        for c in active_configs
     ]
     if include_annual:
         tasks.append(_collect_annual(staff_id, tab, params))
@@ -257,7 +268,7 @@ async def get_dashboard_export_file(
     async with get_session() as session:
         name_map = await _get_user_name_map(session, staff_ids)
 
-    formatted = [_finalize_item(item, name_map, is_admin) for item in all_items]
+    formatted = [_finalize_item(item, name_map, admin_types) for item in all_items]
 
     wb = Workbook(write_only=True)
     ws = wb.create_sheet(title="Dashboard Export")
@@ -362,7 +373,8 @@ def _format_date(val) -> Optional[str]:
         return None
 
 
-def _finalize_item(item: dict, name_map: dict[str, str], is_admin: bool) -> dict:
+def _finalize_item(item: dict, name_map: dict[str, str], admin_types: set[str]) -> dict:
+    is_admin = item["type"] in admin_types
     staff_id = item.pop("_staff_id", None)
     updated_raw = item.pop("_updated_on", None)
     due_raw = item.pop("_response_due_raw", None)

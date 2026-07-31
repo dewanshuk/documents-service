@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from utils.deps import get_current_user
-from utils.authorize import is_helpdesk_admin
+from utils.authorize import get_dashboard_type_scope
 from services.dashboard_service import get_dashboard, get_dashboard_export_file
 from .route_utils import log_and_json_response
 
@@ -41,11 +41,12 @@ async def dashboard(
     """
     try:
         staff_id = user["staff_id"]
-        is_admin = await is_helpdesk_admin(user)
+        visible_types, admin_types = get_dashboard_type_scope(user)
 
         data = await get_dashboard(
             staff_id=staff_id,
-            is_admin=is_admin,
+            visible_types=visible_types,
+            admin_types=admin_types,
             tab=tab,
             search=search,
             type_filter=type_filter,
@@ -105,11 +106,12 @@ async def export_dashboard(
     """
     try:
         staff_id = user["staff_id"]
-        is_admin = await is_helpdesk_admin(user)
+        visible_types, admin_types = get_dashboard_type_scope(user)
 
         stream = await get_dashboard_export_file(
             staff_id=staff_id,
-            is_admin=is_admin,
+            visible_types=visible_types,
+            admin_types=admin_types,
             tab=tab,
             search=search,
             type_filter=type_filter,

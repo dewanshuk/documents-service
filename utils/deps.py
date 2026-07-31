@@ -11,6 +11,7 @@ async def get_current_user():
             "staff_id": user.staff_id,
             "username": user.username,
             "is_master_admin": user.is_master_admin,
+            "is_policy_hub_admin": user.is_policy_hub_admin,
             "is_query_lead": user.is_query_lead,
             "is_complaint_lead": user.is_complaint_lead,
             "is_cheif_compliance_officer": user.is_cheif_compliance_officer,

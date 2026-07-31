@@ -9,11 +9,12 @@ from fastapi.responses import JSONResponse
 from utils.deps import get_current_user
 from utils.record_ids import resolve_record
 from utils.authorize import is_active_cobce_coi_gift_lead, is_active_complaint_lead, is_active_query_lead
+from utils.actor_display import format_actor_name, format_pending_at
 from utils.email_notifications import notify_record_responded, notify_record_closed
 from db.db_manager import db_manager
 from storage.storage_ops import upload_files, LOCAL_STORAGE_ROOT
 from .route_utils import log_and_json_response
-from utils.helpers import now_ist, db_timestamp_now
+from utils.helpers import now_ist, db_timestamp_now, validate_word_limit
 from core.openapi_tags import TAG_COMMON
 
 router = APIRouter(tags=[TAG_COMMON])
@@ -107,27 +108,24 @@ async def get_conversation(
         else:
             record_id_val = db_id
 
-        if getattr(record, "Status", None) == "Draft":
+        if getattr(record, "Status", None) == "Draft" or getattr(record, "OverallStatus", None) == "Closed":
             pending_at_display = "-"
-        elif getattr(record, "OverallStatus", None) != "Closed":
-            pending_at = getattr(record, "PendingAt", None)
-            if pending_at == 1:
-                pending_at_display = "Compliance Team"
-            elif pending_at == 0:
-                pending_at_display = created_by
-            else:
-                pending_at_display = "-"
         else:
-            pending_at_display = "-"
+            pending_at_display = await format_pending_at(getattr(record, "PendingAt", None), created_by)
+
+        actor_name = await format_actor_name(created_by)
+        closed_by_name = await format_actor_name(getattr(record, "ClosedBy", None))
 
         details = {
             "id": record_id_val,
             "status": getattr(record, "OverallStatus", None),
             "pendingAt": pending_at_display,
             "createdBy": created_by,
+            "actor_name": actor_name,
             "createdOn": str(getattr(record, "CreatedOn", "")) if getattr(record, "CreatedOn", None) else None,
             "closureDate": str(getattr(record, "ClosureDate", "")) if getattr(record, "ClosureDate", None) else None,
             "closedBy": getattr(record, "ClosedBy", None),
+            "closed_by_name": closed_by_name,
             "workflowStatus": getattr(record, "Status", None),
         }
 
@@ -253,6 +251,7 @@ async def respond_to_record(
 @router.post("/close/{record_id}")
 async def close_record(
     record_id: str,
+    remarks: str = Form(...),
     user: dict = Depends(get_current_user),
 ):
     """Admin closes a compliance record."""
@@ -277,6 +276,15 @@ async def close_record(
                 {"error": "Only admins can close records"},
             )
 
+        try:
+            validate_word_limit(remarks, 500)
+        except ValueError as e:
+            return log_and_json_response(
+                staff_id, {"record_id": record_id},
+                "/close/{record_id}", "POST", 400,
+                {"error": str(e)},
+            )
+
         record = await db_manager.get(model, db_id)
         if not record:
             return log_and_json_response(
@@ -295,10 +303,24 @@ async def close_record(
             updates["ClosureDate"] = closure_date
         if hasattr(record, "ClosedBy"):
             updates["ClosedBy"] = staff_id
+        if hasattr(record, "ClosedRemarks"):
+            updates["ClosedRemarks"] = remarks
         if hasattr(record, "Status"):
             updates["Status"] = "Completed"
 
         await db_manager.update(model, db_id, updates)
+
+        json_path = getattr(record, "ResponseJsonPath", None)
+        if json_path:
+            conv = await _load_conversation(json_path)
+            conv["conversation"].append({
+                "actor": "Compliance Team",
+                "actorId": staff_id,
+                "dateTime": now_ist().isoformat(),
+                "message": remarks,
+                "files": [],
+            })
+            await _save_conversation(json_path, conv)
 
         created_by = getattr(record, "CreatedBy", "")
         title = getattr(record, "Title", getattr(record, "ComplaintType", getattr(record, "SubType", "")))

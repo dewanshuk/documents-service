@@ -3,6 +3,7 @@ from datetime import datetime
 from db.db_manager import get_session
 from db.models.helpdesk import RecentUserRecords
 from db.models.annual_dec import AnnualDeclaration, UserDeclarationStatus, as_declaration_name
+from utils.actor_display import format_actor_name
 from utils.helpers import UTC
 
 def _format_annual_status(status: str) -> str:
@@ -36,6 +37,10 @@ async def log_annual_declaration_recent(staff_id: str, declaration_id: str) -> N
         else datetime.now(UTC)
     )
 
+    pending_at = None
+    if display_status != "Completed":
+        pending_at = await format_actor_name(staff_id)
+
     await log_recent_record(
         user_id=staff_id,
         record_id=declaration_id,
@@ -44,7 +49,7 @@ async def log_annual_declaration_recent(staff_id: str, declaration_id: str) -> N
         status=display_status,
         created_on=created_on,
         sub_type=declaration.financial_year,
-        pending_at="me" if display_status != "Completed" else None,
+        pending_at=pending_at,
     )
 
 async def log_recent_record(

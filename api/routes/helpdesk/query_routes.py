@@ -15,6 +15,7 @@ from utils.authorize import (
     is_active_complaint_lead,
     is_active_query_lead,
 )
+from utils.actor_display import format_actor_name, format_pending_at
 from utils.helpers import (
     db_timestamp_now,
     get_type_and_model_by_id,
@@ -80,17 +81,13 @@ async def view_query(query_id: str, user: dict = Depends(get_current_user)):
         else:
             record_id = None
 
-        if getattr(record, "Status", None) == "Draft":
+        if getattr(record, "Status", None) == "Draft" or record.OverallStatus == "Closed":
             pending_at_display = "-"
-        elif record.OverallStatus != "Closed":
-            if record.PendingAt == 1:
-                pending_at_display = "Compliance Team"
-            elif record.PendingAt == 0:
-                pending_at_display = record.CreatedBy
-            else:
-                pending_at_display = "-"
         else:
-            pending_at_display = "-"
+            pending_at_display = await format_pending_at(record.PendingAt, record.CreatedBy)
+
+        actor_name = await format_actor_name(record.CreatedBy)
+        closed_by_name = await format_actor_name(getattr(record, "ClosedBy", None))
 
         response_body = {
             "details": {
@@ -98,9 +95,11 @@ async def view_query(query_id: str, user: dict = Depends(get_current_user)):
                 "status": record.OverallStatus,
                 "pendingAt": pending_at_display,
                 "createdBy": record.CreatedBy,
+                "actor_name": actor_name,
                 "createdOn": str(record.CreatedOn) if record.CreatedOn else None,
                 "closureDate": str(record.ClosureDate) if record.ClosureDate else None,
                 "closedBy": getattr(record, "ClosedBy", None),
+                "closed_by_name": closed_by_name,
                 "workflowStatus": getattr(record, "Status", None),
             },
             "conversation": data,
@@ -514,6 +513,7 @@ async def close_query(
                 "OverallStatus": "Closed",
                 "PendingAt": -1,
                 "ClosureDate": db_timestamp_now(),
+                "ClosedRemarks": comment,
             },
         )
 

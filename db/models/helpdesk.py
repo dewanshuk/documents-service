@@ -66,6 +66,7 @@ class ComplianceQuery(Base):
         DateTime(timezone=True), nullable=True
     )
     ClosedBy: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    ClosedRemarks: Mapped[str | None] = mapped_column(String(2000), nullable=True)
 
     LastUpdatedOn: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -95,6 +96,7 @@ class GiftDeclarations(Base):
 
     ClosureDate: Mapped[datetime | None]
     ClosedBy: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    ClosedRemarks: Mapped[str | None] = mapped_column(String(2000), nullable=True)
     LastUpdatedOn: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -118,6 +120,7 @@ class Complaints(Base):
 
     ClosureDate: Mapped[datetime | None]
     ClosedBy: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    ClosedRemarks: Mapped[str | None] = mapped_column(String(2000), nullable=True)
     LastUpdatedOn: Mapped[datetime | None]
 
 class COBCEDeclarations(Base):
@@ -141,6 +144,7 @@ class COBCEDeclarations(Base):
 
     ClosureDate: Mapped[datetime | None]
     ClosedBy: Mapped[str | None]
+    ClosedRemarks: Mapped[str | None]
     LastUpdatedOn: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -166,6 +170,7 @@ class COIDeclarations(Base):
 
     ClosureDate: Mapped[datetime | None]
     ClosedBy: Mapped[str | None]
+    ClosedRemarks: Mapped[str | None]
     LastUpdatedOn: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -193,6 +198,7 @@ class R518Declarations(Base):
 
     ClosureDate: Mapped[datetime | None]
     ClosedBy: Mapped[str | None]
+    ClosedRemarks: Mapped[str | None]
     LastUpdatedOn: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

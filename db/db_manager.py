@@ -283,6 +283,10 @@ async def init_db(Base):
             ))
             await conn.execute(text(
                 f"ALTER TABLE compliance.{tbl} "
+                "ADD COLUMN IF NOT EXISTS \"ClosedRemarks\" VARCHAR(2000)"
+            ))
+            await conn.execute(text(
+                f"ALTER TABLE compliance.{tbl} "
                 "ADD COLUMN IF NOT EXISTS \"LastUpdatedOn\" TIMESTAMPTZ"
             ))
 

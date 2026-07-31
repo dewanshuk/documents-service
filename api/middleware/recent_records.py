@@ -7,6 +7,7 @@ from starlette.responses import Response
 
 from services.recent_records_service import log_recent_record, log_annual_declaration_recent
 from db.db_manager import db_manager
+from utils.actor_display import format_pending_at
 from utils.helpers import get_model_by_id
 from utils.deps import get_current_user
 
@@ -40,16 +41,10 @@ async def get_user_from_request(request: Request) -> str:
     return user["staff_id"]
 
 
-def _pending_at_display(record) -> str:
-    if getattr(record, "Status", None) == "Draft":
+async def _pending_at_display(record) -> str:
+    if getattr(record, "Status", None) == "Draft" or record.OverallStatus == "Closed":
         return "-"
-    if record.OverallStatus != "Closed":
-        if record.PendingAt == 1:
-            return "Compliance Team"
-        if record.PendingAt == 0:
-            return "me"
-        return "-"
-    return "-"
+    return await format_pending_at(record.PendingAt, record.CreatedBy)
 
 
 async def _log_helpdesk_record(staff_id: str, record_id: str) -> None:
@@ -100,7 +95,7 @@ async def _log_helpdesk_record(staff_id: str, record_id: str) -> None:
         status=record.OverallStatus or getattr(record, "Status", None),
         created_on=record.CreatedOn,
         sub_type=sub_type,
-        pending_at=_pending_at_display(record),
+        pending_at=await _pending_at_display(record),
     )
 
 
