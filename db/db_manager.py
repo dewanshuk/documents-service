@@ -289,5 +289,10 @@ async def init_db(Base):
                 "ADD COLUMN IF NOT EXISTS \"LastUpdatedOn\" TIMESTAMPTZ"
             ))
 
+        await conn.execute(text(
+            "ALTER TABLE annual_declarations.user_declaration_status "
+            "ADD COLUMN IF NOT EXISTS remarks TEXT"
+        ))
+
         await conn.execute(text("SET search_path TO compliance, public;"))
         await conn.run_sync(Base.metadata.create_all)

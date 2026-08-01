@@ -47,8 +47,9 @@ async def is_helpdesk_admin(user: dict) -> bool:
 
 ALL_HELPDESK_TYPES = {"Query", "Complaint", "Gift Declaration", "Self Declaration"}
 
-# Dashboard section visibility per lead/role flag (Annual Declaration is excluded:
-# it is always own-records-only for every user, regardless of role).
+# Dashboard section visibility per lead/role flag (Annual Declaration is excluded
+# here: its own visibility rules are handled separately in dashboard_service, based
+# on is_master_admin / is_cheif_compliance_officer).
 DASHBOARD_ROLE_SECTIONS = {
     "is_cheif_compliance_officer": ALL_HELPDESK_TYPES,
     "is_policy_hub_admin": {"Self Declaration", "Complaint", "Query"},

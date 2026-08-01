@@ -1,19 +1,41 @@
 import asyncio
-from datetime import datetime
+from datetime import datetime as DateTime
 from io import BytesIO
 
-from openpyxl import load_workbook
+from openpyxl import Workbook, load_workbook
 from sqlalchemy import select, and_, delete
 
 from db.db_manager import get_session
-from db.models import AnnualDeclaration, UserDeclarationStatus, SyncStatus, User
+from db.models import AnnualDeclaration, UserDeclarationStatus, SyncStatus, User, as_declaration_name
 from db.models.helpdesk import COBCEDeclarations, COIDeclarations
-from db.models.annual_dec import IST
+from utils.helpers import IST, UTC, datetimeformatter, now_ist, to_db_timestamp
 from utils.record_ids import build_annual_user_status_id, year_from_financial_year
-from services.excel_service import _header_index_map, _parse_yes_no
-from storage.storage_ops import download_to_stream
+from services.excel_service import _header_index_map
 
 BATCH_SIZE = 500
+
+_STATUS_DISPLAY = {
+    "not_started": "Pending",
+    "Pending": "Pending",
+    "draft": "In-Progress",
+    "completed": "Completed",
+}
+
+_INVALID_FILENAME_CHARS = str.maketrans({c: "_" for c in r'\/?*[]:'})
+
+
+def _sanitize_filename_part(value: str) -> str:
+    return value.translate(_INVALID_FILENAME_CHARS).strip()
+
+
+def _format_submitted_on(value) -> str:
+    """Format timestamptz as '15/AUG/2026 14:30' in IST. Blank when null."""
+    if value is None:
+        return ""
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    ist_dt = value.astimezone(IST)
+    return f"{datetimeformatter(ist_dt)} {ist_dt.strftime('%H:%M')}"
 
 
 class InvalidStaffIdsError(ValueError):
@@ -50,6 +72,7 @@ async def process_declaration_excel(declaration_id: str, file_bytes: bytes) -> d
     staff_col = col_map.get("Staff ID")
     notify_col = col_map.get("Notify")
     status_col = col_map.get("Status")
+    remarks_col = col_map.get("Remarks")
 
     if staff_col is None:
         raise ValueError("Excel must contain a 'Staff ID' column")
@@ -95,9 +118,15 @@ async def process_declaration_excel(declaration_id: str, file_bytes: bytes) -> d
                     continue
                 staff_id = str(staff_id).strip()
 
-                notify_val = True
-                if notify_col is not None:
-                    notify_val = _parse_yes_no(row[notify_col])
+                status_val = str(row[status_col] or "").strip() if status_col is not None else ""
+                notify_raw = str(row[notify_col] or "").strip() if notify_col is not None else ""
+                remarks_val = str(row[remarks_col] or "").strip() if remarks_col is not None else ""
+
+                notify_val = (
+                    status_val.lower() == "pending"
+                    and notify_raw.lower() == "yes"
+                    and remarks_val.lower() == "available"
+                )
 
                 existing = (
                     await session.execute(
@@ -112,6 +141,7 @@ async def process_declaration_excel(declaration_id: str, file_bytes: bytes) -> d
 
                 if existing:
                     existing.notify = notify_val
+                    existing.remarks = remarks_val or None
                 else:
                     session.add(
                         UserDeclarationStatus(
@@ -122,6 +152,7 @@ async def process_declaration_excel(declaration_id: str, file_bytes: bytes) -> d
                             staff_id=staff_id,
                             status="not_started",
                             notify=notify_val,
+                            remarks=remarks_val or None,
                         )
                     )
 
@@ -159,37 +190,39 @@ async def process_declaration_excel(declaration_id: str, file_bytes: bytes) -> d
     }
 
 async def generate_declaration_status_excel(declaration_id: str) -> tuple[BytesIO, str]:
+    """Build a fresh status report (from DB, not the uploaded template)."""
     async with get_session() as session:
         declaration = await session.get(AnnualDeclaration, declaration_id)
-        if not declaration or not declaration.file_path:
-            raise ValueError("Declaration template not available")
+        if not declaration:
+            raise ValueError("Declaration not found")
 
-        # Get all user statuses
         stmt = select(UserDeclarationStatus).where(
             UserDeclarationStatus.declaration_id == declaration_id
         )
         user_statuses = (await session.execute(stmt)).scalars().all()
-        
-        status_map = {us.staff_id: us for us in user_statuses}
-        staff_ids = list(status_map.keys())
-        name_map: dict[str, str] = {}
-        if staff_ids:
-            user_rows = (
-                await session.execute(
-                    select(User.staff_id, User.username).where(User.staff_id.in_(staff_ids))
+        if not user_statuses:
+            raise ValueError("No uploaded data available for this declaration")
+
+        staff_ids = [us.staff_id for us in user_statuses]
+        user_rows = (
+            await session.execute(
+                select(User.staff_id, User.username, User.status).where(
+                    User.staff_id.in_(staff_ids)
                 )
-            ).all()
-            name_map = {staff_id: (username or "") for staff_id, username in user_rows}
-        
+            )
+        ).all()
+        user_info = {u.staff_id: u for u in user_rows}
+
         # Get self declarations for conflicts
         conflict_staff_ids = [us.staff_id for us in user_statuses if us.has_conflicts]
-        self_declarations_map = {sid: [] for sid in conflict_staff_ids}
-        
+        self_declarations_map: dict[str, list[str]] = {sid: [] for sid in conflict_staff_ids}
+
         if conflict_staff_ids:
             fy_year = year_from_financial_year(declaration.financial_year)
-            start_date = datetime(fy_year, 4, 1, tzinfo=IST)
-            end_date = datetime(fy_year + 1, 3, 31, 23, 59, 59, tzinfo=IST)
-            
+            # CreatedOn on helpdesk tables is TIMESTAMP WITHOUT TIME ZONE (UTC-naive).
+            start_date = to_db_timestamp(DateTime(fy_year, 4, 1, tzinfo=IST))
+            end_date = to_db_timestamp(DateTime(fy_year + 1, 3, 31, 23, 59, 59, tzinfo=IST))
+
             cobce_stmt = select(COBCEDeclarations.CreatedBy, COBCEDeclarations.COBCEId).where(
                 and_(
                     COBCEDeclarations.CreatedBy.in_(conflict_staff_ids),
@@ -200,7 +233,7 @@ async def generate_declaration_status_excel(declaration_id: str) -> tuple[BytesI
             cobce_rows = (await session.execute(cobce_stmt)).all()
             for created_by, record_id in cobce_rows:
                 self_declarations_map[created_by].append(record_id)
-                
+
             coi_stmt = select(COIDeclarations.CreatedBy, COIDeclarations.COIId).where(
                 and_(
                     COIDeclarations.CreatedBy.in_(conflict_staff_ids),
@@ -212,77 +245,40 @@ async def generate_declaration_status_excel(declaration_id: str) -> tuple[BytesI
             for created_by, record_id in coi_rows:
                 self_declarations_map[created_by].append(record_id)
 
-    stream = await download_to_stream(declaration.file_path)
-    file_bytes = stream.read()
-    
-    def _update_excel():
-        wb = load_workbook(BytesIO(file_bytes))
-        ws = wb.active
-        
-        headers = []
-        for col in range(1, ws.max_column + 1):
-            val = ws.cell(row=1, column=col).value
-            if val:
-                headers.append((col, str(val).strip()))
-                
-        staff_col = None
-        name_col = None
-        status_col = None
-        for col_idx, header in headers:
-            if header.lower() == "staff id":
-                staff_col = col_idx
-            elif header.lower() == "name":
-                name_col = col_idx
-            elif header.lower() == "status":
-                status_col = col_idx
-                
-        if not staff_col:
-            raise ValueError("No Staff ID column found in template")
-            
-        if not status_col:
-            status_col = ws.max_column + 1
-            ws.cell(row=1, column=status_col, value="Status")
+    def _build_workbook():
+        wb = Workbook(write_only=True)
+        ws = wb.create_sheet(title="Status")
+        ws.append([
+            "Staff Id", "Name", "Status", "Submitted on", "Active", "Remarks", "Self Declaration",
+        ])
 
-        if not name_col:
-            name_col = ws.max_column + 1
-            ws.cell(row=1, column=name_col, value="Name")
-            
-        completed_date_col = ws.max_column + 1
-        ws.cell(row=1, column=completed_date_col, value="Completed Date")
-        
-        self_decl_col = ws.max_column + 1
-        ws.cell(row=1, column=self_decl_col, value="Self Declarations")
-        
-        for row in range(2, ws.max_row + 1):
-            staff_id_val = ws.cell(row=row, column=staff_col).value
-            if not staff_id_val:
-                continue
-                
-            staff_id = str(staff_id_val).strip()
-            us = status_map.get(staff_id)
-            if not us:
-                continue
+        for us in user_statuses:
+            info = user_info.get(us.staff_id)
+            name = (info.username if info and info.username else "") or ""
+            is_active = bool(info and str(info.status or "").strip().lower() == "active")
 
-            if name_col:
-                ws.cell(row=row, column=name_col, value=name_map.get(staff_id, ""))
-                
-            if status_col:
-                ws.cell(row=row, column=status_col, value=us.status.capitalize())
-            
-            if us.status == "completed" and us.submitted_at:
-                ws.cell(row=row, column=completed_date_col, value=us.submitted_at.strftime("%Y-%m-%d %H:%M:%S"))
-                
-            if us.has_conflicts:
-                decls = self_declarations_map.get(staff_id, [])
-                if decls:
-                    ws.cell(row=row, column=self_decl_col, value=", ".join(decls))
-                    
+            decls = self_declarations_map.get(us.staff_id, [])
+
+            ws.append([
+                us.staff_id,
+                name,
+                _STATUS_DISPLAY.get(us.status, us.status),
+                _format_submitted_on(us.submitted_at),
+                "Yes" if is_active else "No",
+                us.remarks or "",
+                ", ".join(decls),
+            ])
+
         out = BytesIO()
         wb.save(out)
         out.seek(0)
-        
-        from pathlib import Path
-        filename = f"status_{Path(declaration.file_path).name}"
-        return out, filename
+        return out
 
-    return await asyncio.to_thread(_update_excel)
+    output = await asyncio.to_thread(_build_workbook)
+
+    decl_name = _sanitize_filename_part(as_declaration_name(declaration.declaration_name))
+    fy = _sanitize_filename_part(str(declaration.financial_year).replace("-", "_"))
+    timestamp = now_ist().strftime("%Y%m%d%H%M")
+    filename = f"{decl_name}_{fy}_{timestamp}_Status.xlsx"
+
+    return output, filename

@@ -123,6 +123,7 @@ class UserDeclarationStatus(Base):
     status = mapped_column(String(20), nullable=False, default="draft")
     has_conflicts = mapped_column(Boolean, nullable=False, default=False)
     notify = mapped_column(Boolean, nullable=False, default=True)
+    remarks = mapped_column(Text, nullable=True)
     submitted_at = mapped_column(DateTime(timezone=True), nullable=True)
     last_saved_at = mapped_column(
         DateTime(timezone=True),

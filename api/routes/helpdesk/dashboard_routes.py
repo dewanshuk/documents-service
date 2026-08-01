@@ -42,6 +42,9 @@ async def dashboard(
     try:
         staff_id = user["staff_id"]
         visible_types, admin_types = get_dashboard_type_scope(user)
+        is_annual_admin_view = bool(
+            user.get("is_master_admin") or user.get("is_cheif_compliance_officer")
+        )
 
         data = await get_dashboard(
             staff_id=staff_id,
@@ -59,6 +62,7 @@ async def dashboard(
             response_due_end=response_due_end,
             page=page,
             page_size=page_size,
+            is_annual_admin_view=is_annual_admin_view,
         )
 
         return JSONResponse(content=data, status_code=200)
@@ -107,6 +111,9 @@ async def export_dashboard(
     try:
         staff_id = user["staff_id"]
         visible_types, admin_types = get_dashboard_type_scope(user)
+        is_annual_admin_view = bool(
+            user.get("is_master_admin") or user.get("is_cheif_compliance_officer")
+        )
 
         stream = await get_dashboard_export_file(
             staff_id=staff_id,
@@ -122,6 +129,7 @@ async def export_dashboard(
             updated_on_end=updated_on_end,
             response_due_start=response_due_start,
             response_due_end=response_due_end,
+            is_annual_admin_view=is_annual_admin_view,
         )
         timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
         filename = f"dashboard_export_{timestamp}.xlsx"

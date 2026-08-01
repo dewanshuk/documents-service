@@ -4,7 +4,7 @@ from datetime import date, datetime, timedelta
 from io import BytesIO
 from typing import Optional
 
-from sqlalchemy import select, and_, or_, func, case, false
+from sqlalchemy import select, and_, or_, func, case
 from openpyxl import Workbook
 
 from core.constants import (
@@ -127,6 +127,7 @@ async def get_dashboard(
     response_due_end: Optional[date] = None,
     page: int = 1,
     page_size: int = DEFAULT_PAGE_SIZE,
+    is_annual_admin_view: bool = False,
 ) -> dict:
     active_types = _parse_type_filters(type_filter)
 
@@ -163,8 +164,8 @@ async def get_dashboard(
         for c in active_configs
     ]
     if include_annual:
-        data_tasks.append(_collect_annual(staff_id, tab, params))
-        count_tasks.append(_count_annual(staff_id, tab, params))
+        data_tasks.append(_collect_annual(staff_id, tab, params, is_annual_admin_view))
+        count_tasks.append(_count_annual(staff_id, tab, params, is_annual_admin_view))
 
     all_results = await asyncio.gather(*data_tasks, *count_tasks)
 
@@ -213,6 +214,7 @@ async def get_dashboard_export_file(
     updated_on_end: Optional[date] = None,
     response_due_start: Optional[date] = None,
     response_due_end: Optional[date] = None,
+    is_annual_admin_view: bool = False,
 ) -> BytesIO:
     active_types = _parse_type_filters(type_filter)
 
@@ -244,7 +246,7 @@ async def get_dashboard_export_file(
         for c in active_configs
     ]
     if include_annual:
-        tasks.append(_collect_annual(staff_id, tab, params))
+        tasks.append(_collect_annual(staff_id, tab, params, is_annual_admin_view))
 
     results = await asyncio.gather(*tasks)
     all_items = [item for group in results for item in group]
@@ -608,7 +610,9 @@ async def _count_helpdesk(
 
 
 
-def _annual_where_clauses(staff_id: str, tab: str, params: FilterParams):
+def _annual_where_clauses(
+    staff_id: str, tab: str, params: FilterParams, is_admin_view: bool = False,
+):
     today = date.today()
     updated_col = func.coalesce(
         UserDeclarationStatus.last_saved_at,
@@ -619,16 +623,19 @@ def _annual_where_clauses(staff_id: str, tab: str, params: FilterParams):
     clauses = [
         AnnualDeclaration.assigned_date <= today,
         UserDeclarationStatus.notify.is_(True),
-        UserDeclarationStatus.staff_id == staff_id,
     ]
 
-    # Annual declarations are visible only in the due view for the user's own record.
-    if tab != "pending":
-        clauses.append(false())
-        return clauses, updated_col, today
-
-    clauses.append(UserDeclarationStatus.status != "completed")
-    clauses.append(AnnualDeclaration.due_date >= today)
+    if tab == "pending":
+        # Pending tab always shows only the user's own, not-yet-completed records.
+        clauses.append(UserDeclarationStatus.staff_id == staff_id)
+        clauses.append(UserDeclarationStatus.status != "completed")
+        clauses.append(AnnualDeclaration.due_date >= today)
+    else:
+        # All tab: completed records only. Admin / CCO see completed records
+        # org-wide; everyone else sees only their own completed records.
+        clauses.append(UserDeclarationStatus.status == "completed")
+        if not is_admin_view:
+            clauses.append(UserDeclarationStatus.staff_id == staff_id)
 
     if params.sub_type:
         clauses.append(
@@ -708,9 +715,9 @@ def _format_annual_record(uds, decl) -> dict:
 
 
 async def _collect_annual(
-    staff_id: str, tab: str, params: FilterParams,
+    staff_id: str, tab: str, params: FilterParams, is_admin_view: bool = False,
 ) -> list[dict]:
-    clauses, updated_col, _ = _annual_where_clauses(staff_id, tab, params)
+    clauses, updated_col, _ = _annual_where_clauses(staff_id, tab, params, is_admin_view)
 
     stmt = (
         select(UserDeclarationStatus, AnnualDeclaration)
@@ -728,9 +735,9 @@ async def _collect_annual(
 
 
 async def _count_annual(
-    staff_id: str, tab: str, params: FilterParams,
+    staff_id: str, tab: str, params: FilterParams, is_admin_view: bool = False,
 ) -> dict:
-    clauses, _, today = _annual_where_clauses(staff_id, tab, params)
+    clauses, _, today = _annual_where_clauses(staff_id, tab, params, is_admin_view)
 
     if tab == "all":
         stmt = (
