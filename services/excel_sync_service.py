@@ -8,7 +8,7 @@ from sqlalchemy import select, and_, delete
 from db.db_manager import get_session
 from db.models import AnnualDeclaration, UserDeclarationStatus, SyncStatus, User, as_declaration_name
 from db.models.helpdesk import COBCEDeclarations, COIDeclarations
-from utils.helpers import IST, UTC, datetimeformatter, now_ist, to_db_timestamp
+from utils.helpers import IST, format_datetime_ist, now_ist, to_db_timestamp
 from utils.record_ids import build_annual_user_status_id, year_from_financial_year
 from services.excel_service import _header_index_map
 
@@ -30,12 +30,7 @@ def _sanitize_filename_part(value: str) -> str:
 
 def _format_submitted_on(value) -> str:
     """Format timestamptz as '15/AUG/2026 14:30' in IST. Blank when null."""
-    if value is None:
-        return ""
-    if value.tzinfo is None:
-        value = value.replace(tzinfo=UTC)
-    ist_dt = value.astimezone(IST)
-    return f"{datetimeformatter(ist_dt)} {ist_dt.strftime('%H:%M')}"
+    return format_datetime_ist(value)
 
 
 class InvalidStaffIdsError(ValueError):

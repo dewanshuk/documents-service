@@ -12,7 +12,7 @@ from utils.email_notifications import notify_record_responded, notify_record_clo
 from db.db_manager import db_manager
 from storage.storage_ops import upload_files, resolve_file_urls, load_json, save_json
 from .route_utils import log_and_json_response
-from utils.helpers import now_ist, db_timestamp_now, validate_word_limit
+from utils.helpers import now_ist, db_timestamp_now, validate_word_limit, format_datetime_ist
 from core.openapi_tags import TAG_COMMON
 
 router = APIRouter(tags=[TAG_COMMON])
@@ -31,6 +31,14 @@ CREATED_BY_FIELD = {
     "complaint": "CreatedBy",
     "cobce": "CreatedBy",
     "coi": "CreatedBy",
+}
+
+RECORD_TYPE_DISPLAY = {
+    "query": "Query",
+    "gift": "Gift",
+    "complaint": "Complaint",
+    "cobce": "COBCE",
+    "coi": "COI",
 }
 
 
@@ -125,8 +133,9 @@ async def get_conversation(
             "pendingAt": pending_at_display,
             "createdBy": created_by,
             "actor_name": actor_name,
-            "createdOn": str(getattr(record, "CreatedOn", "")) if getattr(record, "CreatedOn", None) else None,
-            "closureDate": str(getattr(record, "ClosureDate", "")) if getattr(record, "ClosureDate", None) else None,
+            "recordType": RECORD_TYPE_DISPLAY.get(record_type, record_type),
+            "createdOn": format_datetime_ist(getattr(record, "CreatedOn", None)),
+            "closureDate": format_datetime_ist(getattr(record, "ClosureDate", None)),
             "closedBy": closed_by,
             "closed_by_name": closed_by_name,
             "workflowStatus": getattr(record, "Status", None),
@@ -158,6 +167,7 @@ async def get_conversation(
             )
             for entry, urls in zip(page, file_url_lists):
                 entry["files"] = urls
+                entry["dateTime"] = format_datetime_ist(entry.get("dateTime"))
 
         return JSONResponse(
             content={

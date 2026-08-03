@@ -11,7 +11,7 @@ from azure.storage.blob import BlobSasPermissions, generate_blob_sas
 from azure.storage.blob.aio import BlobServiceClient
 from fastapi import UploadFile
 
-COMPLIANCE_PREFIX = "/compliance"
+COMPLIANCE_PREFIX = "/helpdesk"
 COMPLIANCE_CONTAINER = os.getenv("AZURE_COMPLIANCE_CONTAINER", "ecp")
 ANNUAL_CONTAINER = os.getenv("AZURE_ANNUAL_CONTAINER", "annual-declarations")
 ANNUAL_DECLARATION_BLOB_NAME = os.getenv(
@@ -51,7 +51,7 @@ def _to_compliance_uri(relative_path: str) -> str:
 
 
 def _uri_to_blob(json_uri: str) -> tuple[str, str]:
-    """Map stored URI /compliance/... to container ecp + blob compliance/..."""
+    """Map stored URI /helpdesk/... to container ecp + blob helpdesk/..."""
     if not json_uri.startswith(f"{COMPLIANCE_PREFIX}/"):
         raise ValueError(f"Invalid compliance URI: {json_uri}")
     return COMPLIANCE_CONTAINER, json_uri.lstrip("/")
@@ -63,7 +63,7 @@ async def upload_files(record_id: str, actor: str, files: list[UploadFile]) -> l
     for upload in files:
         filename = Path(upload.filename or "file").name
         relative = f"{record_id}/{actor}/{filename}"
-        blob_name = f"compliance/{relative}"
+        blob_name = f"helpdesk/{relative}"
         content = await upload.read()
         await container.get_blob_client(blob_name).upload_blob(
             content, overwrite=True
@@ -74,7 +74,7 @@ async def upload_files(record_id: str, actor: str, files: list[UploadFile]) -> l
 
 async def init_json(record_id: str, json_data: dict) -> str:
     relative = f"{record_id}/conversation.json"
-    blob_name = f"compliance/{relative}"
+    blob_name = f"helpdesk/{relative}"
     payload = json.dumps(json_data, indent=2, default=str).encode("utf-8")
     container = await get_container_client(COMPLIANCE_CONTAINER)
     await container.get_blob_client(blob_name).upload_blob(
@@ -171,7 +171,6 @@ async def generate_blob_sas_url(
     prefer_user_delegation: bool = True,
     container: str = ANNUAL_CONTAINER,
 ):
-    conn = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
     if not conn:
         raise RuntimeError(
             "AZURE_STORAGE_CONNECTION_STRING is required to generate SAS URLs"

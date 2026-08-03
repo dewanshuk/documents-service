@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from .route_utils import log_and_json_response
-from storage.storage_ops import generate_blob_sas_url, COMPLIANCE_CONTAINER
+from storage.storage_ops import generate_blob_sas_url, COMPLIANCE_CONTAINER, COMPLIANCE_PREFIX
 
 from core.openapi_tags import TAG_COMMON
 
@@ -14,7 +14,7 @@ router = APIRouter(tags=[TAG_COMMON])
 async def download_file(path: str):
     """Generate a temporary SAS URL for a compliance file download."""
     try:
-        if not path.startswith("/compliance/") or ".." in path:
+        if not path.startswith(f"{COMPLIANCE_PREFIX}/") or ".." in path:
             return log_and_json_response(
                 None,
                 {"path": path},
