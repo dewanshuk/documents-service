@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from .route_utils import log_and_json_response
-from storage.storage_ops import generate_blob_sas_url
+from storage.storage_ops import generate_blob_sas_url, COMPLIANCE_CONTAINER
 
 from core.openapi_tags import TAG_COMMON
 
@@ -24,9 +24,9 @@ async def download_file(path: str):
                 {"error": "Invalid file path"},
             )
 
-        blob_name = path.replace("/compliance/", "")
+        blob_name = path.lstrip("/")
         url = await generate_blob_sas_url(
-            container="ecp", blob_name=blob_name, expiry_minutes=15
+            container=COMPLIANCE_CONTAINER, blob_name=blob_name, expiry_minutes=15
         )
         return log_and_json_response(
             None,

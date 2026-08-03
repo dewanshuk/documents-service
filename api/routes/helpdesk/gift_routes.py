@@ -10,6 +10,7 @@ from utils.actor_display import format_actor_name
 from utils.email_notifications import notify_record_created
 from db.db_manager import db_manager
 from db.models.helpdesk import GiftDeclarations
+from db.validators.comp_help import GiftType
 from storage.storage_ops import upload_files, init_json
 from .route_utils import log_and_json_response
 
@@ -22,6 +23,7 @@ router = APIRouter(tags=[TAG_GIFT])
 @router.post("/gift")
 async def raise_gift(
     status: str = Form(...),
+    type: GiftType = Form(...),
     person: str = Form(...),
     organization: str = Form(...),
     approxValueINR: float = Form(...),
@@ -37,6 +39,7 @@ async def raise_gift(
                 user["staff_id"],
                 {
                     "status": status,
+                    "type": type.value,
                     "person": person,
                     "organization": organization,
                 },
@@ -49,7 +52,12 @@ async def raise_gift(
         if len(files) > 6:
             return log_and_json_response(
                 user["staff_id"],
-                {"status": status, "person": person, "organization": organization},
+                {
+                    "status": status,
+                    "type": type.value,
+                    "person": person,
+                    "organization": organization,
+                },
                 "/gift",
                 "POST",
                 400,
@@ -72,6 +80,7 @@ async def raise_gift(
                     "dateTime": now.isoformat(),
                     "data": {
                         "status": status,
+                        "type": type.value,
                         "person": person,
                         "organization": organization,
                         "approxValueINR": approxValueINR,
@@ -90,6 +99,7 @@ async def raise_gift(
             {
                 "GiftId": gift_id,
                 "Status": status,
+                "Type": type.value,
                 "Person": person,
                 "Organization": organization,
                 "ApproxValueINR": approxValueINR,
@@ -122,7 +132,12 @@ async def raise_gift(
     except Exception as e:
         return log_and_json_response(
             user.get("staff_id"),
-            {"status": status, "person": person, "organization": organization},
+            {
+                "status": status,
+                "type": type.value,
+                "person": person,
+                "organization": organization,
+            },
             "/gift",
             "POST",
             500,

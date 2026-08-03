@@ -5,6 +5,7 @@ from io import BytesIO
 from typing import Optional
 
 from sqlalchemy import select, and_, or_, func, case
+from sqlalchemy.orm import load_only
 from openpyxl import Workbook
 
 from core.constants import (
@@ -540,6 +541,26 @@ def _format_helpdesk_record(config: TableConfig, rec) -> dict:
     }
 
 
+def _helpdesk_load_only(config: TableConfig):
+    """Return a load_only() option that selects only the columns _format_helpdesk_record needs."""
+    model = config.model
+    cols = [
+        getattr(model, config.pk_field),
+        model.OverallStatus,
+        model.CreatedBy,
+        model.CreatedOn,
+        model.PendingAt,
+        model.AssignedTo,
+        model.ClosureDate,
+        model.ClosedBy,
+    ]
+    if config.updated_field:
+        cols.append(getattr(model, config.updated_field))
+    if config.sub_type_field:
+        cols.append(getattr(model, config.sub_type_field))
+    return load_only(*cols)
+
+
 async def _collect_helpdesk(
     config: TableConfig, staff_id: str, is_admin: bool, tab: str, params: FilterParams,
 ) -> list[dict]:
@@ -548,7 +569,7 @@ async def _collect_helpdesk(
         return []
     clauses, updated_col, _, _ = result
 
-    stmt = select(config.model)
+    stmt = select(config.model).options(_helpdesk_load_only(config))
     if clauses:
         stmt = stmt.where(*clauses)
     stmt = stmt.order_by(updated_col.desc())
@@ -722,6 +743,22 @@ async def _collect_annual(
     stmt = (
         select(UserDeclarationStatus, AnnualDeclaration)
         .join(AnnualDeclaration, UserDeclarationStatus.declaration_id == AnnualDeclaration.id)
+        .options(
+            load_only(
+                UserDeclarationStatus.id,
+                UserDeclarationStatus.declaration_id,
+                UserDeclarationStatus.staff_id,
+                UserDeclarationStatus.status,
+                UserDeclarationStatus.last_saved_at,
+                UserDeclarationStatus.submitted_at,
+            ),
+            load_only(
+                AnnualDeclaration.id,
+                AnnualDeclaration.declaration_name,
+                AnnualDeclaration.due_date,
+                AnnualDeclaration.last_updated_at,
+            ),
+        )
         .where(*clauses)
         .order_by(updated_col.desc())
     )

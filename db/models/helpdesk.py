@@ -80,6 +80,9 @@ class GiftDeclarations(Base):
 
     GiftId: Mapped[str] = mapped_column(String(80), primary_key=True)
     Status: Mapped[str]
+    Type: Mapped[str] = mapped_column(
+        String(50), nullable=False, server_default="TO_BE_GIVEN"
+    )
     Person: Mapped[str]
     Organization: Mapped[str]
     ApproxValueINR: Mapped[float]

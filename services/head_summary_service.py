@@ -1,14 +1,16 @@
-from datetime import datetime
+from datetime import date, datetime
 from io import BytesIO
 
 from openpyxl import Workbook
-from sqlalchemy import select, func, cast, Float, case, and_
+from sqlalchemy import select, func, cast, Float, case
 
 from db.db_manager import get_session
 from services.excel_service import _sanitize_sheet_title
 from db.models import AnnualDeclaration, DeclarationType, User, UserDeclarationStatus, as_declaration_name
 
 ALLOWED_DESIGNATIONS = {"dvm", "ddvm", "sr dvm", "sr eo", "eo"}
+HEAD_SUMMARY_VISIBILITY_DAYS = 60
+COBCE_COI_NAME = "COBCE/COI"
 
 HEAD_EXPORT_HEADERS = [
     "Staff ID",
@@ -79,6 +81,15 @@ def _format_submitted_on(submitted_at: datetime | None) -> str:
     return submitted_at.isoformat()
 
 
+def _is_past_visibility_window(due_date: date | datetime | None) -> bool:
+    """True when current date is more than 60 days after the due date."""
+    if due_date is None:
+        return True
+    if isinstance(due_date, datetime):
+        due_date = due_date.date()
+    return (date.today() - due_date).days > HEAD_SUMMARY_VISIBILITY_DAYS
+
+
 async def _get_requesting_user(session, staff_id: str) -> User:
     user = (
         await session.execute(select(User).where(User.staff_id == staff_id))
@@ -108,51 +119,24 @@ async def get_head_summary(staff_id: str) -> list[dict]:
     async with get_session() as session:
         user = await _get_requesting_user(session, staff_id)
         filter_value, designation = _resolve_head_scope(user)
+        declaration = await _get_latest_declaration(session, COBCE_COI_NAME)
+        if _is_past_visibility_window(declaration.due_date):
+            return []
+
         grouping_expr, grouping_label = _department_grouping_expr(designation)
 
         cobce_completed = func.sum(
-            case(
-                (
-                    and_(
-                        AnnualDeclaration.declaration_name == "COBCE/COI",
-                        UserDeclarationStatus.status == "completed",
-                    ),
-                    1,
-                ),
-                else_=0,
-            )
+            case((UserDeclarationStatus.status == "completed", 1), else_=0)
         )
-        cobce_total = func.sum(
-            case((AnnualDeclaration.declaration_name == "COBCE/COI", 1), else_=0)
-        )
+        cobce_total = func.count(UserDeclarationStatus.id)
         cobce_percentage = func.coalesce(
             cast(cobce_completed, Float) / func.nullif(cobce_total, 0) * 100, 0
-        )
-
-        r518_completed = func.sum(
-            case(
-                (
-                    and_(
-                        AnnualDeclaration.declaration_name == "R5.18",
-                        UserDeclarationStatus.status == "completed",
-                    ),
-                    1,
-                ),
-                else_=0,
-            )
-        )
-        r518_total = func.sum(
-            case((AnnualDeclaration.declaration_name == "R5.18", 1), else_=0)
-        )
-        r518_percentage = func.coalesce(
-            cast(r518_completed, Float) / func.nullif(r518_total, 0) * 100, 0
         )
 
         stmt = (
             select(
                 grouping_expr.label("group_name"),
                 cobce_percentage.label("cobce_coi_percentage"),
-                r518_percentage.label("r518_percentage"),
             )
             .select_from(User)
             .join(
@@ -163,7 +147,11 @@ async def get_head_summary(staff_id: str) -> list[dict]:
                 AnnualDeclaration,
                 UserDeclarationStatus.declaration_id == AnnualDeclaration.id,
             )
-            .where(User.department.ilike(f"%{filter_value}%"))
+            .where(
+                User.department.ilike(f"%{filter_value}%"),
+                AnnualDeclaration.declaration_name == COBCE_COI_NAME,
+                UserDeclarationStatus.declaration_id == declaration.id,
+            )
             .group_by(grouping_expr)
         )
 
@@ -174,9 +162,7 @@ async def get_head_summary(staff_id: str) -> list[dict]:
                 "cobce_coi_completion_percentage": round(
                     float(row.cobce_coi_percentage or 0), 2
                 ),
-                "r518_completion_percentage": round(
-                    float(row.r518_percentage or 0), 2
-                ),
+                "r518_completion_percentage": 0.0,
             }
             for row in rows
         ]
@@ -191,6 +177,12 @@ async def generate_head_summary_export(
         user = await _get_requesting_user(session, staff_id)
         filter_value, _designation = _resolve_head_scope(user)
         declaration = await _get_latest_declaration(session, declaration_name)
+        if _is_past_visibility_window(declaration.due_date):
+            raise HeadSummaryAccessError(
+                "Head summary export is not available more than "
+                f"{HEAD_SUMMARY_VISIBILITY_DAYS} days after the due date",
+                status_code=404,
+            )
 
         stmt = (
             select(

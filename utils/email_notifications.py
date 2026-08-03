@@ -5,7 +5,9 @@ email.  Call them with ``asyncio.create_task(notify_...)`` so the HTTP
 response is not delayed.
 """
 
+import asyncio
 import logging
+
 from db.db_manager import db_manager
 
 from utils.email_manager import send_email
@@ -80,6 +82,43 @@ async def _get_lead_emails(record_type: str) -> list[str]:
     return [r["email"] for r in rows if r.get("email")]
 
 
+async def _get_users_batch(staff_ids: list[str]) -> dict[str, dict]:
+    """Fetch multiple users in one query (WHERE staff_id IN ...) and return a map."""
+    if not staff_ids:
+        return {}
+
+    # Same placeholder pattern as email_manager.send_email — avoids ORM select().
+    placeholders = ", ".join(f":sid_{i}" for i in range(len(staff_ids)))
+    rows = await db_manager.raw(
+        f"""
+        SELECT staff_id, username, email,
+               department, division, organization_vertical
+        FROM users.users
+        WHERE staff_id IN ({placeholders})
+        """,
+        {f"sid_{i}": sid for i, sid in enumerate(staff_ids)},
+    )
+
+    result = {
+        r["staff_id"]: {
+            "staff_id": r["staff_id"],
+            "name": r.get("username") or r["staff_id"],
+            "email": r.get("email") or "",
+            "department": r.get("department") or "",
+            "division": r.get("division") or "",
+            "vertical": r.get("organization_vertical") or "",
+        }
+        for r in rows
+    }
+    for sid in staff_ids:
+        if sid not in result:
+            result[sid] = {
+                "staff_id": sid, "name": sid, "email": "",
+                "department": "", "division": "", "vertical": "",
+            }
+    return result
+
+
 # =====================================================
 # RECORD CREATED
 # =====================================================
@@ -92,8 +131,10 @@ async def notify_record_created(
 ) -> None:
     try:
         label = RECORD_TYPE_LABELS.get(record_type, record_type)
-        user = await _get_user_details(creator_staff_id)
-        leads = await _get_lead_emails(record_type)
+        user, leads = await asyncio.gather(
+            _get_user_details(creator_staff_id),
+            _get_lead_emails(record_type),
+        )
 
         html = record_created(
             record_type=label,
@@ -136,8 +177,10 @@ async def notify_record_assigned(
 ) -> None:
     try:
         label = RECORD_TYPE_LABELS.get(record_type, record_type)
-        creator = await _get_user_details(creator_staff_id)
-        assignee = await _get_user_details(assigned_to_staff_id)
+        creator, assignee = await asyncio.gather(
+            _get_user_details(creator_staff_id),
+            _get_user_details(assigned_to_staff_id),
+        )
 
         html = record_assigned(
             record_type=label,
@@ -178,8 +221,10 @@ async def notify_record_responded(
 ) -> None:
     try:
         label = RECORD_TYPE_LABELS.get(record_type, record_type)
-        creator = await _get_user_details(creator_staff_id)
-        responder = await _get_user_details(responder_staff_id)
+        creator, responder = await asyncio.gather(
+            _get_user_details(creator_staff_id),
+            _get_user_details(responder_staff_id),
+        )
 
         html = record_responded(
             record_type=label,
@@ -223,8 +268,10 @@ async def notify_record_closed(
 ) -> None:
     try:
         label = RECORD_TYPE_LABELS.get(record_type, record_type)
-        creator = await _get_user_details(creator_staff_id)
-        closer = await _get_user_details(closed_by_staff_id)
+        creator, closer = await asyncio.gather(
+            _get_user_details(creator_staff_id),
+            _get_user_details(closed_by_staff_id),
+        )
 
         html = record_closed(
             record_type=label,
@@ -279,20 +326,23 @@ async def notify_annual_declaration_users(
         if not staff_ids:
             return
 
+        from datetime import datetime as _dt
+        due_date_str = due_date
+        try:
+            if isinstance(due_date, str):
+                due_date_str = _dt.strptime(due_date, "%Y-%m-%d").strftime("%d %b %Y").upper()
+            else:
+                due_date_str = due_date.strftime("%d %b %Y").upper()
+        except Exception:
+            pass
+
+        # Single query for all assigned users instead of N individual lookups.
+        user_map = await _get_users_batch(staff_ids)
+
         for staff_id in staff_ids:
             try:
-                user = await _get_user_details(staff_id)
-                due_date_str = due_date
-                try:
-                    from datetime import datetime
-                    if isinstance(due_date, str):
-                        dt = datetime.strptime(due_date, "%Y-%m-%d")
-                    else:
-                        dt = due_date
-                    due_date_str = dt.strftime("%d %b %Y").upper()
-                except Exception:
-                    pass
-
+                # user_map is pre-fetched; no DB call per iteration.
+                _ = user_map[staff_id]
                 html = annual_declaration_assigned(
                     declaration_name=declaration_name,
                     financial_year=financial_year,

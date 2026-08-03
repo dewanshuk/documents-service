@@ -15,6 +15,13 @@ class QueryType(str, Enum):
     Other = "Other"
 
 
+class GiftType(str, Enum):
+    TO_BE_GIVEN = "TO_BE_GIVEN"
+    ALREADY_GIVEN = "ALREADY_GIVEN"
+    TO_BE_RECEIVED = "TO_BE_RECEIVED"
+    ALREADY_RECEIVED = "ALREADY_RECEIVED"
+
+
 class RaiseQueryRequest(BaseModel):
     queryType: QueryType
     title: str = Field(...)

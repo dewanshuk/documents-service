@@ -1,9 +1,7 @@
-import json
 import asyncio
-from pathlib import Path
 from typing import List
 
-from fastapi import APIRouter, Depends, UploadFile, File, Form
+from fastapi import APIRouter, Depends, UploadFile, File, Form, Query
 from fastapi.responses import JSONResponse
 
 from utils.deps import get_current_user
@@ -12,7 +10,7 @@ from utils.authorize import is_active_cobce_coi_gift_lead, is_active_complaint_l
 from utils.actor_display import format_actor_name, format_pending_at
 from utils.email_notifications import notify_record_responded, notify_record_closed
 from db.db_manager import db_manager
-from storage.storage_ops import upload_files, resolve_file_urls, LOCAL_STORAGE_ROOT
+from storage.storage_ops import upload_files, resolve_file_urls, load_json, save_json
 from .route_utils import log_and_json_response
 from utils.helpers import now_ist, db_timestamp_now, validate_word_limit
 from core.openapi_tags import TAG_COMMON
@@ -36,29 +34,28 @@ CREATED_BY_FIELD = {
 }
 
 
-def _json_path_on_disk(json_uri: str) -> Path:
-    relative = json_uri.replace("/compliance/", "", 1)
-    return LOCAL_STORAGE_ROOT / "compliance" / relative
-
-
 async def _load_conversation(json_uri: str) -> dict:
-    path = _json_path_on_disk(json_uri)
-    data = await asyncio.to_thread(path.read_text, encoding="utf-8")
-    return json.loads(data)
+    return await load_json(json_uri)
 
 
 async def _save_conversation(json_uri: str, data: dict) -> None:
-    path = _json_path_on_disk(json_uri)
-    payload = json.dumps(data, indent=2, default=str)
-    await asyncio.to_thread(path.write_text, payload, encoding="utf-8")
+    await save_json(json_uri, data)
 
 
 @router.get("/conversation/{record_id}")
 async def get_conversation(
     record_id: str,
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     user: dict = Depends(get_current_user),
 ):
-    """Retrieve the full conversation thread for a compliance record."""
+    """Retrieve the conversation thread for a compliance record.
+
+    Supports pagination via `limit` (default 50) and `offset` (default 0).
+    Offset counts from the end, so offset=0 returns the most recent `limit` messages.
+    The response includes `total_messages` and `has_more` for the client to detect
+    whether older messages exist.
+    """
     try:
         try:
             model, record_type, db_id = await resolve_record(record_id)
@@ -104,13 +101,23 @@ async def get_conversation(
         else:
             record_id_val = db_id
 
-        if getattr(record, "Status", None) == "Draft" or getattr(record, "OverallStatus", None) == "Closed":
-            pending_at_display = "-"
-        else:
-            pending_at_display = await format_pending_at(getattr(record, "PendingAt", None), created_by)
+        closed_by = getattr(record, "ClosedBy", None)
+        is_draft_or_closed = (
+            getattr(record, "Status", None) == "Draft"
+            or getattr(record, "OverallStatus", None) == "Closed"
+        )
 
-        actor_name = await format_actor_name(created_by)
-        closed_by_name = await format_actor_name(getattr(record, "ClosedBy", None))
+        async def _pending_at_or_dash():
+            if is_draft_or_closed:
+                return "-"
+            return await format_pending_at(getattr(record, "PendingAt", None), created_by)
+
+        # Resolve actor names and pending-at label in parallel (3 DB lookups → 1 round-trip).
+        actor_name, closed_by_name, pending_at_display = await asyncio.gather(
+            format_actor_name(created_by),
+            format_actor_name(closed_by),
+            _pending_at_or_dash(),
+        )
 
         details = {
             "id": record_id_val,
@@ -120,7 +127,7 @@ async def get_conversation(
             "actor_name": actor_name,
             "createdOn": str(getattr(record, "CreatedOn", "")) if getattr(record, "CreatedOn", None) else None,
             "closureDate": str(getattr(record, "ClosureDate", "")) if getattr(record, "ClosureDate", None) else None,
-            "closedBy": getattr(record, "ClosedBy", None),
+            "closedBy": closed_by,
             "closed_by_name": closed_by_name,
             "workflowStatus": getattr(record, "Status", None),
         }
@@ -128,15 +135,40 @@ async def get_conversation(
         json_path = getattr(record, "ResponseJsonPath", None)
         if not json_path:
             return JSONResponse(
-                content={"id": record_id_val, "details": details, "conversation": []},
+                content={
+                    "id": record_id_val, "details": details,
+                    "conversation": [], "total_messages": 0, "has_more": False,
+                },
                 status_code=200,
             )
 
         conv = await _load_conversation(json_path)
-        conv["details"] = details
-        for entry in conv.get("conversation", []) or []:
-            entry["files"] = await resolve_file_urls(entry.get("files"))
-        return JSONResponse(content=conv, status_code=200)
+        all_messages = conv.get("conversation", []) or []
+        total_messages = len(all_messages)
+
+        # Paginate from the end (most recent messages by default).
+        end = total_messages - offset
+        start = max(0, end - limit)
+        page = all_messages[start:end]
+
+        # Resolve file URLs for this page in parallel instead of sequentially.
+        if page:
+            file_url_lists = await asyncio.gather(
+                *[resolve_file_urls(entry.get("files")) for entry in page]
+            )
+            for entry, urls in zip(page, file_url_lists):
+                entry["files"] = urls
+
+        return JSONResponse(
+            content={
+                "id": record_id_val,
+                "details": details,
+                "conversation": page,
+                "total_messages": total_messages,
+                "has_more": start > 0,
+            },
+            status_code=200,
+        )
     except Exception as e:
         return log_and_json_response(
             user.get("staff_id"), {"record_id": record_id},

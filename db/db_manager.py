@@ -290,6 +290,12 @@ async def init_db(Base):
             ))
 
         await conn.execute(text(
+            "ALTER TABLE compliance.gift_declarations "
+            "ADD COLUMN IF NOT EXISTS \"Type\" VARCHAR(50) "
+            "NOT NULL DEFAULT 'TO_BE_GIVEN'"
+        ))
+
+        await conn.execute(text(
             "ALTER TABLE annual_declarations.user_declaration_status "
             "ADD COLUMN IF NOT EXISTS remarks TEXT"
         ))
