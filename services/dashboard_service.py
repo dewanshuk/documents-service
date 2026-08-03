@@ -73,7 +73,7 @@ HELPDESK_CONFIGS = [
         model=GiftDeclarations,
         type_label="Gift Declaration",
         pk_field="GiftId",
-        search_fields=("GiftId", "Person"),
+        search_fields=("GiftId", "Person", "Title", "Description"),
         sub_type_value="Gift",
         updated_field="LastUpdatedOn",
     ),

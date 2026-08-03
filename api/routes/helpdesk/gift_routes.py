@@ -4,7 +4,7 @@ from fastapi import UploadFile, File, Form, APIRouter, Depends
 from typing import List
 
 from utils.deps import get_current_user
-from utils.helpers import now_ist, db_timestamp_now
+from utils.helpers import now_ist, db_timestamp_now, validate_word_limit
 from utils.record_ids import next_gift_id
 from utils.actor_display import format_actor_name
 from utils.email_notifications import notify_record_created
@@ -24,6 +24,8 @@ router = APIRouter(tags=[TAG_GIFT])
 async def raise_gift(
     status: str = Form(...),
     type: GiftType = Form(...),
+    title: str = Form(...),
+    description: str = Form(...),
     person: str = Form(...),
     organization: str = Form(...),
     approxValueINR: float = Form(...),
@@ -34,12 +36,26 @@ async def raise_gift(
 ):
     """Raise a gift declaration, optionally including approval portal details and files."""
     try:
+        try:
+            validate_word_limit(title, 50)
+            validate_word_limit(description, 500)
+        except ValueError as e:
+            return log_and_json_response(
+                user["staff_id"],
+                {"title": title, "description": description},
+                "/gift",
+                "POST",
+                400,
+                {"error": str(e)},
+            )
+
         if portalApprovalTaken.lower() == "yes" and not portalNumber:
             return log_and_json_response(
                 user["staff_id"],
                 {
                     "status": status,
                     "type": type.value,
+                    "title": title,
                     "person": person,
                     "organization": organization,
                 },
@@ -55,6 +71,7 @@ async def raise_gift(
                 {
                     "status": status,
                     "type": type.value,
+                    "title": title,
                     "person": person,
                     "organization": organization,
                 },
@@ -81,6 +98,8 @@ async def raise_gift(
                     "data": {
                         "status": status,
                         "type": type.value,
+                        "title": title,
+                        "description": description,
                         "person": person,
                         "organization": organization,
                         "approxValueINR": approxValueINR,
@@ -100,6 +119,8 @@ async def raise_gift(
                 "GiftId": gift_id,
                 "Status": status,
                 "Type": type.value,
+                "Title": title,
+                "Description": description,
                 "Person": person,
                 "Organization": organization,
                 "ApproxValueINR": approxValueINR,
@@ -114,7 +135,7 @@ async def raise_gift(
         )
 
         asyncio.create_task(notify_record_created(
-            "gift", gift_id, staff_id, title=person,
+            "gift", gift_id, staff_id, title=title,
         ))
 
         return log_and_json_response(
@@ -135,6 +156,7 @@ async def raise_gift(
             {
                 "status": status,
                 "type": type.value,
+                "title": title,
                 "person": person,
                 "organization": organization,
             },

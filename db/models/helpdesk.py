@@ -83,6 +83,8 @@ class GiftDeclarations(Base):
     Type: Mapped[str] = mapped_column(
         String(50), nullable=False, server_default="TO_BE_GIVEN"
     )
+    Title: Mapped[str] = mapped_column(String(500), nullable=False)
+    Description: Mapped[str] = mapped_column(String(5000), nullable=False)
     Person: Mapped[str]
     Organization: Mapped[str]
     ApproxValueINR: Mapped[float]
