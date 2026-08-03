@@ -440,28 +440,32 @@ def _helpdesk_where_clauses(
     today = date.today()
     clauses = []
 
-    if not is_admin:
-        clauses.append(model.CreatedBy == staff_id)
-
     if tab == "pending":
-        clauses.append(func.lower(model.OverallStatus) != "completed")
+        not_completed = func.lower(model.OverallStatus) != "completed"
+        own_clause = and_(model.CreatedBy == staff_id, not_completed, model.PendingAt == 0)
         if is_admin:
-            clauses.append(model.PendingAt == 1)
+            admin_clause = and_(not_completed, model.PendingAt == 1)
+            clauses.append(or_(own_clause, admin_clause))
         else:
-            clauses.append(model.PendingAt == 0)
+            clauses.append(own_clause)
     elif tab == "all":
-        if is_admin:
-            clauses.append(or_(
-                model.PendingAt == 0,
-                func.lower(model.OverallStatus) == "completed",
-                model.PendingAt.is_(None),
-            ))
-        else:
-            clauses.append(or_(
+        own_clause = and_(
+            model.CreatedBy == staff_id,
+            or_(
                 model.PendingAt == 1,
                 func.lower(model.OverallStatus) == "completed",
                 model.PendingAt.is_(None),
-            ))
+            ),
+        )
+        if is_admin:
+            admin_clause = or_(
+                model.PendingAt == 0,
+                func.lower(model.OverallStatus) == "completed",
+                model.PendingAt.is_(None),
+            )
+            clauses.append(or_(own_clause, admin_clause))
+        else:
+            clauses.append(own_clause)
 
     if params.overall_status:
         clauses.append(

@@ -217,6 +217,32 @@ async def respond_to_record(
                 {"error": "Not authorized to respond to this record"},
             )
 
+        if getattr(record, "OverallStatus", None) in ("Closed", "Completed"):
+            return log_and_json_response(
+                staff_id, {"record_id": record_id},
+                "/respond/{record_id}", "POST", 400,
+                {"error": "Record is already closed"},
+            )
+
+        # Turn-based enforcement: PendingAt=1 means it is the admin's turn to
+        # respond, PendingAt=0 means it is the owner's turn. Acting as admin
+        # requires is_admin and not is_owner (self-owned admin records are
+        # treated as the owner's turn, matching the actor assignment below).
+        pending_at = getattr(record, "PendingAt", None)
+        acting_as_admin = is_admin and not is_owner
+        if acting_as_admin and pending_at != 1:
+            return log_and_json_response(
+                staff_id, {"record_id": record_id},
+                "/respond/{record_id}", "POST", 403,
+                {"error": "Waiting for the user's response before you can respond again"},
+            )
+        if not acting_as_admin and pending_at != 0:
+            return log_and_json_response(
+                staff_id, {"record_id": record_id},
+                "/respond/{record_id}", "POST", 403,
+                {"error": "Waiting for the admin's response before you can respond again"},
+            )
+
         json_path = getattr(record, "ResponseJsonPath", None)
         if not json_path:
             return log_and_json_response(
@@ -233,7 +259,7 @@ async def respond_to_record(
             )
 
         now = now_ist()
-        actor = "Admin" if is_admin and not is_owner else "User"
+        actor = "Admin" if acting_as_admin else "User"
         file_paths = await upload_files(db_id, actor.lower(), files)
 
         conv = await _load_conversation(json_path)
@@ -247,12 +273,7 @@ async def respond_to_record(
         })
         await _save_conversation(json_path, conv)
 
-        current_pending = getattr(record, "PendingAt", None)
-        new_pending = current_pending
-        if is_admin and not is_owner:
-            new_pending = 0
-        elif is_owner:
-            new_pending = 1
+        new_pending = 0 if acting_as_admin else 1
 
         await db_manager.update(model, db_id, {
             "PendingAt": new_pending,
