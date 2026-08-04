@@ -11,7 +11,6 @@ class QueryType(str, Enum):
     COI = "COI"
     ComplyShield = "ComplyShield"
     Gift = "Gift"
-    R518 = "R5.18"
     Other = "Other"
 
 

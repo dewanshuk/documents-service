@@ -26,7 +26,6 @@ class Base(DeclarativeBase):
 
 class DeclarationType(enum.Enum):
     COBCE_COI = "COBCE/COI"
-    R5_18 = "R5.18"
 
 
 class SyncStatus(enum.Enum):

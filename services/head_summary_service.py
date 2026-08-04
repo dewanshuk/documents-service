@@ -162,7 +162,6 @@ async def get_head_summary(staff_id: str) -> list[dict]:
                 "cobce_coi_completion_percentage": round(
                     float(row.cobce_coi_percentage or 0), 2
                 ),
-                "r518_completion_percentage": 0.0,
             }
             for row in rows
         ]

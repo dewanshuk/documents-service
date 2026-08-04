@@ -75,7 +75,7 @@ def datetimeformatter(value: Union[datetime, date, str, int, float]) -> str:
     return f"{d.day:02d}/{MONTH_ABBR[d.month]}/{d.year:04d}"
 
 def format_datetime_ist(value: Union[datetime, str, None]) -> str:
-    """Format a datetime (or ISO string) as '15/AUG/2026 14:30' in IST. Blank when null."""
+    """Format a datetime (or ISO string) as '15/AUG/2026 2:30 PM' in IST. Blank when null."""
     if not value:
         return ""
     if isinstance(value, str):
@@ -86,7 +86,7 @@ def format_datetime_ist(value: Union[datetime, str, None]) -> str:
     if value.tzinfo is None:
         value = value.replace(tzinfo=UTC)
     ist_dt = value.astimezone(IST)
-    return f"{datetimeformatter(ist_dt)} {ist_dt.strftime('%H:%M')}"
+    return f"{datetimeformatter(ist_dt)} {ist_dt.strftime('%I:%M %p').lstrip('0')}"
 
 def validate_word_limit(text: str, max_words: int):
     if len(text.split()) > max_words:

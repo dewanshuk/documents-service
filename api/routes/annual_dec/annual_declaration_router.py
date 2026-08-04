@@ -316,7 +316,7 @@ async def head_summary(current_user: dict = Depends(get_current_user)):
 @router.get("/head-summary/export")
 async def export_head_summary(
     declaration_name: DeclarationType = Query(
-        ..., description="Declaration type: COBCE/COI or R5.18"
+        ..., description="Declaration type: COBCE/COI"
     ),
     current_user: dict = Depends(get_current_user),
 ):

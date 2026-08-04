@@ -124,12 +124,8 @@ COBCE_COI_QUESTIONS = {
 }
 
 
-R518_QUESTIONS: dict = {}
-
-
 DECLARATION_CONFIGS: dict[str, dict] = {
     "COBCE/COI": COBCE_COI_QUESTIONS,
-    "R5.18": R518_QUESTIONS,
 }
 
 

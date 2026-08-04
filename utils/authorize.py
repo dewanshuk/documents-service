@@ -62,26 +62,24 @@ DASHBOARD_ROLE_SECTIONS = {
 def get_dashboard_type_scope(user: dict) -> tuple[set[str], set[str]]:
     """Return (visible_types, admin_types) for helpdesk dashboard sections.
 
-    - visible_types: which of ALL_HELPDESK_TYPES should appear for this user.
-    - admin_types: subset of visible_types where records are shown org-wide
-      (all staff); the remaining visible types are scoped to the user's own records.
+    - visible_types: always ALL_HELPDESK_TYPES so every user keeps their own
+      records across Query / Complaint / Gift / Self Declaration.
+    - admin_types: role-granted types where org-wide admin records are added
+      on top of the user's own records; remaining types stay own-scoped.
 
-    is_master_admin / is_knowledge_hub_admin keep full unrestricted access (unaffected
-    by the new role-based scoping). Users with none of the DASHBOARD_ROLE_SECTIONS
-    flags see every section, scoped to their own records only.
+    is_master_admin / is_knowledge_hub_admin keep full unrestricted access.
+    Users with none of the DASHBOARD_ROLE_SECTIONS flags see every section,
+    scoped to their own records only.
     """
     if as_bool(user.get("is_master_admin")) or as_bool(user.get("is_knowledge_hub_admin")):
         return set(ALL_HELPDESK_TYPES), set(ALL_HELPDESK_TYPES)
-
+  
     granted: set[str] = set()
     for flag, sections in DASHBOARD_ROLE_SECTIONS.items():
         if as_bool(user.get(flag)):
             granted |= sections
 
-    if granted:
-        return granted, granted
-
-    return set(ALL_HELPDESK_TYPES), set()
+    return set(ALL_HELPDESK_TYPES), granted
 
 
 async def is_active_query_lead(staff_id: str) -> bool:

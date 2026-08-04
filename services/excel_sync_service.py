@@ -29,7 +29,7 @@ def _sanitize_filename_part(value: str) -> str:
 
 
 def _format_submitted_on(value) -> str:
-    """Format timestamptz as '15/AUG/2026 14:30' in IST. Blank when null."""
+    """Format timestamptz as '15/AUG/2026 2:30 PM' in IST. Blank when null."""
     return format_datetime_ist(value)
 
 
