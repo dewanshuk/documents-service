@@ -309,7 +309,9 @@ def _parse_type_filters(type_filter: Optional[str]) -> list[str]:
     return labels if labels else list(TYPE_FILTER_MAP.values())
 
 
-def _response_status(due_date, overall_status: str) -> str:
+def _response_status(due_date, overall_status: str) -> Optional[str]:
+    if overall_status and overall_status.lower() == "draft":
+        return None
     if overall_status and overall_status.lower() == "completed":
         return "Completed"
     if due_date is None:
@@ -440,17 +442,34 @@ def _helpdesk_where_clauses(
     today = date.today()
     clauses = []
 
+    if hasattr(model, "Status"):
+        is_draft = or_(
+            func.lower(model.OverallStatus) == "draft",
+            and_(
+                model.OverallStatus.is_(None),
+                func.lower(model.Status) == "draft",
+            ),
+        )
+    else:
+        is_draft = func.lower(model.OverallStatus) == "draft"
+
     if tab == "pending":
         not_completed = func.lower(model.OverallStatus) != "completed"
-        own_clause = and_(model.CreatedBy == staff_id, not_completed, model.PendingAt == 0)
+        own_actionable = and_(
+            model.CreatedBy == staff_id, not_completed, model.PendingAt == 0,
+        )
+        own_draft = and_(model.CreatedBy == staff_id, is_draft)
+        own_clause = or_(own_actionable, own_draft)
         if is_admin:
-            admin_clause = and_(not_completed, model.PendingAt == 1)
+            admin_clause = and_(not_completed, model.PendingAt == 1, ~is_draft)
             clauses.append(or_(own_clause, admin_clause))
         else:
             clauses.append(own_clause)
     elif tab == "all":
+        # Drafts belong in pending only — never in all.
         own_clause = and_(
             model.CreatedBy == staff_id,
+            ~is_draft,
             or_(
                 model.PendingAt == 1,
                 func.lower(model.OverallStatus) == "completed",
@@ -458,10 +477,13 @@ def _helpdesk_where_clauses(
             ),
         )
         if is_admin:
-            admin_clause = or_(
-                model.PendingAt == 0,
-                func.lower(model.OverallStatus) == "completed",
-                model.PendingAt.is_(None),
+            admin_clause = and_(
+                ~is_draft,
+                or_(
+                    model.PendingAt == 0,
+                    func.lower(model.OverallStatus) == "completed",
+                    model.PendingAt.is_(None),
+                ),
             )
             clauses.append(or_(own_clause, admin_clause))
         else:
@@ -488,8 +510,10 @@ def _helpdesk_where_clauses(
         clauses.append(func.date(updated_col) <= params.updated_on_end)
 
     if params.response_due_start:
+        clauses.append(~is_draft)
         clauses.append(due_expr >= params.response_due_start)
     if params.response_due_end:
+        clauses.append(~is_draft)
         clauses.append(due_expr <= params.response_due_end)
 
     if params.response_status:
@@ -497,9 +521,11 @@ def _helpdesk_where_clauses(
         if rs == "completed":
             clauses.append(func.lower(model.OverallStatus) == "completed")
         elif rs == "overdue":
+            clauses.append(~is_draft)
             clauses.append(func.lower(model.OverallStatus) != "completed")
             clauses.append(due_expr < today)
         elif rs == "due":
+            clauses.append(~is_draft)
             clauses.append(func.lower(model.OverallStatus) != "completed")
             clauses.append(due_expr >= today)
 
@@ -516,13 +542,18 @@ def _helpdesk_where_clauses(
 
 def _format_helpdesk_record(config: TableConfig, rec) -> dict:
     pk_val = getattr(rec, config.pk_field)
-    overall = rec.OverallStatus or "Pending"
+    if rec.OverallStatus:
+        overall = rec.OverallStatus
+    elif getattr(rec, "Status", None) == "Draft":
+        overall = "Draft"
+    else:
+        overall = "Pending"
 
     updated_on = rec.CreatedOn
     if config.updated_field:
         updated_on = getattr(rec, config.updated_field, None) or rec.CreatedOn
 
-    due = _compute_due_date(updated_on)
+    due = None if overall.lower() == "draft" else _compute_due_date(updated_on)
     rs = _response_status(due, overall)
 
     sub_type = config.sub_type_value or (
@@ -558,6 +589,8 @@ def _helpdesk_load_only(config: TableConfig):
         model.ClosureDate,
         model.ClosedBy,
     ]
+    if hasattr(model, "Status"):
+        cols.append(model.Status)
     if config.updated_field:
         cols.append(getattr(model, config.updated_field))
     if config.sub_type_field:
@@ -671,6 +704,8 @@ def _annual_where_clauses(
         os_val = params.overall_status.strip().lower()
         if os_val == "completed":
             clauses.append(UserDeclarationStatus.status == "completed")
+        elif os_val == "draft":
+            clauses.append(UserDeclarationStatus.status == "draft")
         else:
             clauses.append(UserDeclarationStatus.status != "completed")
 
@@ -687,8 +722,10 @@ def _annual_where_clauses(
         clauses.append(func.date(updated_col) <= params.updated_on_end)
 
     if params.response_due_start:
+        clauses.append(UserDeclarationStatus.status != "draft")
         clauses.append(AnnualDeclaration.due_date >= params.response_due_start)
     if params.response_due_end:
+        clauses.append(UserDeclarationStatus.status != "draft")
         clauses.append(AnnualDeclaration.due_date <= params.response_due_end)
 
     if params.response_status:
@@ -696,10 +733,10 @@ def _annual_where_clauses(
         if rs == "completed":
             clauses.append(UserDeclarationStatus.status == "completed")
         elif rs == "overdue":
-            clauses.append(UserDeclarationStatus.status != "completed")
+            clauses.append(UserDeclarationStatus.status.notin_(("completed", "draft")))
             clauses.append(AnnualDeclaration.due_date < today)
         elif rs == "due":
-            clauses.append(UserDeclarationStatus.status != "completed")
+            clauses.append(UserDeclarationStatus.status.notin_(("completed", "draft")))
             clauses.append(AnnualDeclaration.due_date >= today)
 
     return clauses, updated_col, today
@@ -710,14 +747,20 @@ def _format_annual_record(uds, decl) -> dict:
     if status in ("not_started", "Pending"):
         display_status = "Pending"
     elif status == "draft":
-        display_status = "In-Progress"
+        display_status = "Draft"
     elif status == "completed":
         display_status = "Completed"
     else:
         display_status = status
 
-    overall = "Completed" if display_status == "Completed" else "In-Progress"
-    rs = _response_status(decl.due_date, overall)
+    if display_status == "Completed":
+        overall = "Completed"
+    elif display_status == "Draft":
+        overall = "Draft"
+    else:
+        overall = "In-Progress"
+    due_date = None if overall.lower() == "draft" else decl.due_date
+    rs = _response_status(due_date, overall)
     updated_on = uds.last_saved_at or uds.submitted_at or decl.last_updated_at
     request_id = uds.id or build_annual_user_status_id(uds.staff_id, decl.id)
 
@@ -730,7 +773,7 @@ def _format_annual_record(uds, decl) -> dict:
         "overall_status": overall,
         "_staff_id": uds.staff_id,
         "_updated_on": updated_on,
-        "_response_due_raw": decl.due_date,
+        "_response_due_raw": due_date,
         "_pending_at": None,
         "_assigned_to": None,
         "_closed_at": None,

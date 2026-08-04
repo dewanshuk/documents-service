@@ -17,7 +17,7 @@ BATCH_SIZE = 500
 _STATUS_DISPLAY = {
     "not_started": "Pending",
     "Pending": "Pending",
-    "draft": "In-Progress",
+    "draft": "Draft",
     "completed": "Completed",
 }
 

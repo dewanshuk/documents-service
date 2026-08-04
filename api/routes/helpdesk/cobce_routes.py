@@ -42,8 +42,8 @@ async def create_cobce(
                 "Status": "Draft",
                 "CreatedOn": created_on,
                 "CreatedBy": staff_id,
-                "OverallStatus": None,
-                "PendingAt": None,
+                "OverallStatus": "Draft",
+                "PendingAt": 0,
                 "ResponseJsonPath": None,
             },
         )
@@ -106,6 +106,8 @@ async def update_cobce(
             {
                 "Description": description,
                 "SubType": subType,
+                "OverallStatus": "Draft",
+                "PendingAt": 0,
             },
         )
 
@@ -182,9 +184,9 @@ async def submit_cobce(
             COBCEDeclarations,
             id,
             {
-                "Status": "In-Progress",
-                "PendingAt": 1,
-                "OverallStatus": "Pending",
+                "Status": "Completed",
+                "PendingAt": 0,
+                "OverallStatus": "Completed",
                 "ResponseJsonPath": json_path,
             },
         )

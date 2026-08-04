@@ -57,9 +57,11 @@ def _uri_to_blob(json_uri: str) -> tuple[str, str]:
     return COMPLIANCE_CONTAINER, json_uri.lstrip("/")
 
 
-async def upload_files(record_id: str, actor: str, files: list[UploadFile]) -> list[str]:
+async def upload_files(
+    record_id: str, actor: str, files: list[UploadFile]
+) -> list[dict[str, str]]:
     container = await get_container_client(COMPLIANCE_CONTAINER)
-    file_paths: list[str] = []
+    stored: list[dict[str, str]] = []
     for upload in files:
         filename = Path(upload.filename or "file").name
         relative = f"{record_id}/{actor}/{filename}"
@@ -68,8 +70,10 @@ async def upload_files(record_id: str, actor: str, files: list[UploadFile]) -> l
         await container.get_blob_client(blob_name).upload_blob(
             content, overwrite=True
         )
-        file_paths.append(_to_compliance_uri(relative))
-    return file_paths
+        stored.append(
+            {"path": _to_compliance_uri(relative), "filename": filename}
+        )
+    return stored
 
 
 async def init_json(record_id: str, json_data: dict) -> str:
@@ -171,6 +175,7 @@ async def generate_blob_sas_url(
     prefer_user_delegation: bool = True,
     container: str = ANNUAL_CONTAINER,
 ):
+    conn = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
     if not conn:
         raise RuntimeError(
             "AZURE_STORAGE_CONNECTION_STRING is required to generate SAS URLs"
@@ -202,10 +207,23 @@ async def generate_blob_sas_url(
     return f"https://{account_name}.blob.core.windows.net/{container}/{blob_name}?{sas_token}"
 
 
-async def resolve_file_urls(file_paths: Optional[list[str]]) -> list[str]:
-    """Convert stored compliance file paths into temporary SAS download URLs."""
-    urls: list[str] = []
-    for path in file_paths or []:
+async def resolve_file_urls(
+    file_entries: Optional[list],
+) -> list[dict[str, str]]:
+    """Convert stored compliance files into SAS URLs with filenames.
+
+    Accepts legacy string paths or ``{"path", "filename"}`` objects.
+    Legacy entries get ``filename: ""``.
+    """
+    resolved: list[dict[str, str]] = []
+    for entry in file_entries or []:
+        if isinstance(entry, dict):
+            path = entry.get("path") or ""
+            filename = entry.get("filename") or ""
+        else:
+            path = str(entry or "")
+            filename = ""
+
         blob_name = path.lstrip("/")
         try:
             url = await generate_blob_sas_url(
@@ -215,8 +233,8 @@ async def resolve_file_urls(file_paths: Optional[list[str]]) -> list[str]:
             )
         except FileNotFoundError:
             url = path
-        urls.append(url)
-    return urls
+        resolved.append({"url": url, "filename": filename})
+    return resolved
 
 
 async def close_clients():

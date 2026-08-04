@@ -10,7 +10,7 @@ def _format_annual_status(status: str) -> str:
     if status in ("not_started", "Pending"):
         return "Pending"
     if status == "draft":
-        return "In-Progress"
+        return "Draft"
     if status == "completed":
         return "Completed"
     return status

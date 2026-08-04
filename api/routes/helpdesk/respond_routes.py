@@ -234,10 +234,9 @@ async def respond_to_record(
                 {"error": "Record is already closed"},
             )
 
-        # Turn-based enforcement: PendingAt=1 means it is the admin's turn to
-        # respond, PendingAt=0 means it is the owner's turn. Acting as admin
-        # requires is_admin and not is_owner (self-owned admin records are
-        # treated as the owner's turn, matching the actor assignment below).
+        # Turn-based enforcement: PendingAt=1 → admin's turn, PendingAt=0 → owner's
+        # turn. Admins may only act as Admin on records they do not own; on their
+        # own records they can only respond as User (when PendingAt=0).
         pending_at = getattr(record, "PendingAt", None)
         acting_as_admin = is_admin and not is_owner
         if acting_as_admin and pending_at != 1:

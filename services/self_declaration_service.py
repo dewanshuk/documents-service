@@ -111,8 +111,8 @@ async def _submit_cobce_record(
             "Status": "Draft",
             "CreatedOn": created_on,
             "CreatedBy": staff_id,
-            "OverallStatus": None,
-            "PendingAt": None,
+            "OverallStatus": "Draft",
+            "PendingAt": 0,
             "ResponseJsonPath": None,
         },
     )
@@ -144,9 +144,9 @@ async def _submit_cobce_record(
         COBCEDeclarations,
         record_id,
         {
-            "Status": "In_Progress",
-            "PendingAt": 1,
-            "OverallStatus": "Pending",
+            "Status": "Completed",
+            "PendingAt": 0,
+            "OverallStatus": "Completed",
             "ResponseJsonPath": json_path,
         },
     )
@@ -185,6 +185,8 @@ async def _save_cobce(
                         "name": cobce_rows[0]["person_responsible"],
                         "rows": cobce_rows,
                     },
+                    "OverallStatus": "Draft",
+                    "PendingAt": 0,
                 },
             )
         else:
@@ -202,8 +204,8 @@ async def _save_cobce(
                     "Status": "Draft",
                     "CreatedOn": db_timestamp_now(),
                     "CreatedBy": staff_id,
-                    "OverallStatus": None,
-                    "PendingAt": None,
+                    "OverallStatus": "Draft",
+                    "PendingAt": 0,
                     "ResponseJsonPath": None,
                 },
             )
@@ -211,6 +213,7 @@ async def _save_cobce(
         return {
             "id": draft_record_id,
             "status": "Draft",
+            "overall_status": "Draft",
             "declaration_type": "cobce",
             "row_count": len(cobce_rows),
         }
@@ -235,14 +238,16 @@ async def _save_cobce(
     if len(created_ids) == 1:
         return {
             "id": created_ids[0],
-            "status": "In_Progress",
+            "status": "Completed",
+            "overall_status": "Completed",
             "declaration_type": "cobce",
             "row_count": 1,
         }
 
     return {
         "ids": created_ids,
-        "status": "In_Progress",
+        "status": "Completed",
+        "overall_status": "Completed",
         "declaration_type": "cobce",
         "row_count": len(created_ids),
     }
@@ -273,7 +278,12 @@ async def _save_coi(
         await db_manager.update(
             COIDeclarations,
             record_id,
-            {"FormData": form_data, "SubType": sub_type},
+            {
+                "FormData": form_data,
+                "SubType": sub_type,
+                "OverallStatus": "Draft",
+                "PendingAt": 0,
+            },
         )
     else:
         record_id = await next_self_decl_id(staff_id)
@@ -286,14 +296,19 @@ async def _save_coi(
                 "Status": "Draft",
                 "CreatedOn": db_timestamp_now(),
                 "CreatedBy": staff_id,
-                "PendingAt": None,
-                "OverallStatus": None,
+                "PendingAt": 0,
+                "OverallStatus": "Draft",
                 "ResponseJsonPath": None,
             },
         )
 
     if status == "draft":
-        return {"id": record_id, "status": "Draft", "declaration_type": "coi"}
+        return {
+            "id": record_id,
+            "status": "Draft",
+            "overall_status": "Draft",
+            "declaration_type": "coi",
+        }
 
     record = await db_manager.get(COIDeclarations, record_id)
     now = now_ist()
@@ -319,15 +334,16 @@ async def _save_coi(
         COIDeclarations,
         record_id,
         {
-            "Status": "In-Progress",
-            "PendingAt": 1,
-            "OverallStatus": "Pending",
+            "Status": "Completed",
+            "PendingAt": 0,
+            "OverallStatus": "Completed",
             "ResponseJsonPath": json_path,
         },
     )
     return {
         "id": record_id,
-        "status": "In-Progress",
+        "status": "Completed",
+        "overall_status": "Completed",
         "declaration_type": "coi",
     }
 
