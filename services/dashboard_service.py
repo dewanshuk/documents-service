@@ -156,23 +156,57 @@ async def get_dashboard(
     ]
     include_annual = "Annual Declaration" in active_types
 
+    # Summary KPI counts must stay constant regardless of any applied filter
+    # (type, search, sub_type, status, dates) — they only vary by tab and
+    # role/admin scope. So they're computed with a blank FilterParams and
+    # the full visible type set, independent of the request's active params.
+    summary_configs = [c for c in HELPDESK_CONFIGS if c.type_label in visible_types]
+    summary_params = FilterParams()
+
+    no_filters_applied = (
+        (not type_filter or not type_filter.strip())
+        and not params.search
+        and not params.sub_type
+        and not params.overall_status
+        and not params.response_status
+        and not params.updated_on_start
+        and not params.updated_on_end
+        and not params.response_due_start
+        and not params.response_due_end
+    )
+
     data_tasks = [
         _collect_helpdesk(c, staff_id, c.type_label in admin_types, tab, params)
         for c in active_configs
     ]
-    count_tasks = [
+    summary_count_tasks = [
+        _count_helpdesk(c, staff_id, c.type_label in admin_types, tab, summary_params)
+        for c in summary_configs
+    ]
+    summary_count_tasks.append(_count_annual(staff_id, tab, summary_params, is_annual_admin_view))
+    if include_annual:
+        data_tasks.append(_collect_annual(staff_id, tab, params, is_annual_admin_view))
+
+    # When no filters are applied at all, the paginated total matches the
+    # summary counts exactly, so we avoid running duplicate count queries.
+    total_count_tasks = [] if no_filters_applied else [
         _count_helpdesk(c, staff_id, c.type_label in admin_types, tab, params)
         for c in active_configs
     ]
-    if include_annual:
-        data_tasks.append(_collect_annual(staff_id, tab, params, is_annual_admin_view))
-        count_tasks.append(_count_annual(staff_id, tab, params, is_annual_admin_view))
-
-    all_results = await asyncio.gather(*data_tasks, *count_tasks)
+    if not no_filters_applied and include_annual:
+        total_count_tasks.append(_count_annual(staff_id, tab, params, is_annual_admin_view))
 
     n_data = len(data_tasks)
+    n_summary = len(summary_count_tasks)
+
+    all_results = await asyncio.gather(*data_tasks, *summary_count_tasks, *total_count_tasks)
+
     data_results = all_results[:n_data]
-    count_results = list(all_results[n_data:])
+    summary_count_results = list(all_results[n_data:n_data + n_summary])
+    total_count_results = (
+        summary_count_results if no_filters_applied
+        else list(all_results[n_data + n_summary:])
+    )
 
     all_items = [item for group in data_results for item in group]
     all_items.sort(key=lambda x: _sort_key(x.get("_updated_on")), reverse=True)
@@ -189,8 +223,8 @@ async def get_dashboard(
     async with get_session() as session:
         name_map = await _get_user_name_map(session, staff_ids)
 
-    summary = _build_summary(active_configs, include_annual, count_results, tab)
-    total = sum(c["total"] for c in count_results)
+    summary = _build_summary(summary_configs, True, summary_count_results, tab)
+    total = sum(c["total"] for c in total_count_results)
 
     return {
         "items": [_finalize_item(item, name_map, admin_types) for item in page_items],

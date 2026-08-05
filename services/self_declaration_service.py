@@ -266,7 +266,23 @@ async def _save_coi(
         if errors:
             raise ValueError("; ".join(errors))
 
-    if record_id:
+    is_new = False
+    if not record_id:
+        record_id = await next_self_decl_id(staff_id)
+        is_new = True
+
+    # Handle files for draft or submit
+    new_file_paths = []
+    if files:
+        new_file_paths = await upload_files(record_id, "user", files)
+
+    if new_file_paths:
+        existing_files = form_data.get("files") or []
+        if not isinstance(existing_files, list):
+            existing_files = []
+        form_data["files"] = existing_files + new_file_paths
+
+    if not is_new:
         record = await db_manager.get(COIDeclarations, record_id)
         if not record:
             raise ValueError("Declaration not found")
@@ -286,7 +302,6 @@ async def _save_coi(
             },
         )
     else:
-        record_id = await next_self_decl_id(staff_id)
         await db_manager.create(
             COIDeclarations,
             {
@@ -312,7 +327,7 @@ async def _save_coi(
 
     record = await db_manager.get(COIDeclarations, record_id)
     now = now_ist()
-    file_paths = await upload_files(record_id, "user", files)
+    
     json_data = {
         "id": record_id,
         "conversation": [
@@ -325,7 +340,7 @@ async def _save_coi(
                     "subType": record.SubType,
                     "formData": record.FormData,
                 },
-                "files": file_paths,
+                "files": record.FormData.get("files", []),
             }
         ],
     }
@@ -440,5 +455,9 @@ async def get_self_declaration_by_id(
                 entry["files"] = await resolve_file_urls(entry.get("files"))
         except Exception:
             data["conversation"] = None
+
+    if record_type == "coi" and data.get("formData") and "files" in data["formData"]:
+        data["formData"] = dict(data["formData"])
+        data["formData"]["files"] = await resolve_file_urls(data["formData"]["files"])
 
     return data
