@@ -1,0 +1,1556 @@
+{
+  "info": {
+    "_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "name": "Compliance Helpdesk + Annual Declarations",
+    "description": "Import this collection AND the matching environment.\n\nSetup:\n1. Set `base_url` (e.g. http://localhost:8000)\n2. Set `auth_token` (token only; Bearer is added automatically)\n3. Fill `declaration_id` and `assign_staff_id`\n4. If file fields are empty after import, attach postman/fixtures/sample.txt or sample_declaration.xlsx\n\nPrefilled: query_id=QRY-kpmg_nthompson-000022, record_id=CMP-kpmg_ktalwar-000011",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000"
+    },
+    {
+      "key": "auth_token",
+      "value": ""
+    },
+    {
+      "key": "query_id",
+      "value": "QRY-kpmg_nthompson-000022"
+    },
+    {
+      "key": "record_id",
+      "value": "CMP-kpmg_ktalwar-000011"
+    },
+    {
+      "key": "declaration_id",
+      "value": ""
+    },
+    {
+      "key": "assign_staff_id",
+      "value": ""
+    },
+    {
+      "key": "self_declaration_id",
+      "value": ""
+    },
+    {
+      "key": "staff_id",
+      "value": "STAFF001"
+    },
+    {
+      "key": "file_path",
+      "value": "/helpdesk/dummy/path/sample.txt"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{auth_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/compliance/health",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "compliance",
+                "health"
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Dashboard",
+      "item": [
+        {
+          "name": "Dashboard (pending)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/compliance/dashboard?tab=pending&page=1&page_size=10",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "compliance",
+                "dashboard"
+              ],
+              "query": [
+                {
+                  "key": "tab",
+                  "value": "pending"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "page_size",
+                  "value": "10"
+                },
+                {
+                  "key": "type",
+                  "value": "query,gift,complaint",
+                  "disabled": true
+                },
+                {
+                  "key": "search",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "sub_type",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "response_status",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "overall_status",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "updated_on_start",
+                  "value": "2026-01-01",
+                  "disabled": true
+                },
+                {
+                  "key": "updated_on_end",
+                  "value": "2026-12-31",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Dashboard (all)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/compliance/dashboard?tab=all&page=1&page_size=10",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "compliance",
+                "dashboard"
+              ],
+              "query": [
+                {
+                  "key": "tab",
+                  "value": "all"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "page_size",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Dashboard Export",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/compliance/dashboard/export?tab=pending",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "compliance",
+                "dashboard",
+                "export"
+              ],
+              "query": [
+                {
+                  "key": "tab",
+                  "value": "pending"
+                },
+                {
+                  "key": "type",
+                  "value": "query,gift",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Downloads xlsx"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Recent Activity",
+      "item": [
+        {
+          "name": "Get Recent Activity",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/compliance/recent-activity",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "compliance",
+                "recent-activity"
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Log Recent Activity",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/compliance/recent-activity",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "compliance",
+                "recent-activity"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"record_id\": \"{{query_id}}\",\n  \"record_type\": \"query\",\n  \"title\": \"Dummy recent activity title\",\n  \"status\": \"Pending\",\n  \"created_on\": \"2026-08-01T10:00:00\",\n  \"sub_type\": \"COBCE\",\n  \"pending_at\": \"Compliance Team\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Query",
+      "item": [
+        {
+          "name": "Raise Query",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/compliance/query",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "compliance",
+                "query"
+              ]
+            },
+            "description": "Creates a new query. Copy returned query_id into env variable query_id.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "queryType",
+                  "value": "COBCE",
+                  "type": "text",
+                  "description": "COBCE | COI | ComplyShield | Gift | Other"
+                },
+                {
+                  "key": "title",
+                  "value": "Dummy query title for Postman",
+                  "type": "text"
+                },
+                {
+                  "key": "description",
+                  "value": "This is a dummy description for raising a compliance query via Postman.",
+                  "type": "text"
+                },
+                {
+                  "key": "files",
+                  "type": "file",
+                  "src": "fixtures/sample.txt"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "View Query",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/compliance/query/{{query_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "compliance",
+                "query",
+                "{{query_id}}"
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Respond to Query",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/compliance/query/{{query_id}}/respond",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "compliance",
+                "query",
+                "{{query_id}}",
+                "respond"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "message",
+                  "value": "Dummy response comment from Postman.",
+                  "type": "text"
+                },
+                {
+                  "key": "files",
+                  "type": "file",
+                  "src": "fixtures/sample.txt"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Close Query",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/compliance/query/{{query_id}}/close",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "compliance",
+                "query",
+                "{{query_id}}",
+                "close"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "comment",
+                  "value": "Closing this query via Postman dummy payload.",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Complaint",
+      "item": [
+        {
+          "name": "Raise Complaint",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/compliance/complaint",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "compliance",
+                "complaint"
+              ]
+            },
+            "description": "Creates complaint. Copy complaint_id into record_id if needed.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "complaintType",
+                  "value": "Other",
+                  "type": "text",
+                  "description": "COBCE | COI | ComplyShield | Gift | Other"
+                },
+                {
+                  "key": "complaintDetails",
+                  "value": "Dummy complaint details submitted from Postman collection.",
+                  "type": "text"
+                },
+                {
+                  "key": "files",
+                  "type": "file",
+                  "src": "fixtures/sample.txt"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Gift",
+      "item": [
+        {
+          "name": "Raise Gift Declaration",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/compliance/gift",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "compliance",
+                "gift"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "status",
+                  "value": "Submitted",
+                  "type": "text"
+                },
+                {
+                  "key": "type",
+                  "value": "TO_BE_GIVEN",
+                  "type": "text",
+                  "description": "TO_BE_GIVEN | ALREADY_GIVEN | TO_BE_RECEIVED | ALREADY_RECEIVED"
+                },
+                {
+                  "key": "title",
+                  "value": "Dummy gift declaration",
+                  "type": "text"
+                },
+                {
+                  "key": "description",
+                  "value": "Dummy gift description for Postman testing.",
+                  "type": "text"
+                },
+                {
+                  "key": "person",
+                  "value": "Jane Doe",
+                  "type": "text"
+                },
+                {
+                  "key": "organization",
+                  "value": "Acme Corp",
+                  "type": "text"
+                },
+                {
+                  "key": "approxValueINR",
+                  "value": "2500",
+                  "type": "text"
+                },
+                {
+                  "key": "portalApprovalTaken",
+                  "value": "yes",
+                  "type": "text"
+                },
+                {
+                  "key": "portalNumber",
+                  "value": "PORTAL-12345",
+                  "type": "text"
+                },
+                {
+                  "key": "files",
+                  "type": "file",
+                  "src": "fixtures/sample.txt"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Self Declaration",
+      "item": [
+        {
+          "name": "Self Declaration Form Config",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/compliance/self-declaration/form-config",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "compliance",
+                "self-declaration",
+                "form-config"
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Get Self Declaration",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/compliance/self-declaration/{{self_declaration_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "compliance",
+                "self-declaration",
+                "{{self_declaration_id}}"
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Save Self Declaration (COBCE draft)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/compliance/self-declaration",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "compliance",
+                "self-declaration"
+              ]
+            },
+            "description": "Omit id to create. Set returned id into self_declaration_id.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "declaration_type",
+                  "value": "cobce",
+                  "type": "text"
+                },
+                {
+                  "key": "status",
+                  "value": "draft",
+                  "type": "text",
+                  "description": "draft | submit"
+                },
+                {
+                  "key": "subType",
+                  "value": "COBCE",
+                  "type": "text"
+                },
+                {
+                  "key": "description",
+                  "value": "Dummy COBCE self-declaration description.",
+                  "type": "text"
+                },
+                {
+                  "key": "rows",
+                  "value": "[{\"nature_of_violation\": \"Dummy violation nature\", \"person_responsible\": \"John Smith\"}]",
+                  "type": "text"
+                },
+                {
+                  "key": "files",
+                  "type": "file",
+                  "src": "fixtures/sample.txt"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Save Self Declaration (COI submit)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/compliance/self-declaration",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "compliance",
+                "self-declaration"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "declaration_type",
+                  "value": "coi",
+                  "type": "text"
+                },
+                {
+                  "key": "status",
+                  "value": "submit",
+                  "type": "text"
+                },
+                {
+                  "key": "subType",
+                  "value": "OUTSIDE_ACTIVITY",
+                  "type": "text"
+                },
+                {
+                  "key": "description",
+                  "value": "Dummy COI outside activity declaration.",
+                  "type": "text"
+                },
+                {
+                  "key": "formData",
+                  "value": "{\"companyName\": \"Dummy Company Pvt Ltd\", \"address\": \"123 Test Street, Mumbai\", \"activityType\": \"Advisory board\", \"remarks\": \"Submitted via Postman dummy payload\"}",
+                  "type": "text"
+                },
+                {
+                  "key": "files",
+                  "type": "file",
+                  "src": "fixtures/sample.txt"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Self Declaration Draft",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/compliance/self-declaration",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "compliance",
+                "self-declaration"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "declaration_type",
+                  "value": "cobce",
+                  "type": "text"
+                },
+                {
+                  "key": "status",
+                  "value": "draft",
+                  "type": "text"
+                },
+                {
+                  "key": "subType",
+                  "value": "COBCE",
+                  "type": "text"
+                },
+                {
+                  "key": "id",
+                  "value": "{{self_declaration_id}}",
+                  "type": "text"
+                },
+                {
+                  "key": "description",
+                  "value": "Updated dummy COBCE draft.",
+                  "type": "text"
+                },
+                {
+                  "key": "rows",
+                  "value": "[{\"nature_of_violation\": \"Updated violation\", \"person_responsible\": \"Jane Smith\"}]",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Respond / Close / Conversation",
+      "item": [
+        {
+          "name": "Get Conversation",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/compliance/conversation/{{record_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "compliance",
+                "conversation",
+                "{{record_id}}"
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Respond to Record",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/compliance/respond/{{record_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "compliance",
+                "respond",
+                "{{record_id}}"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "message",
+                  "value": "Dummy reply on shared respond endpoint.",
+                  "type": "text"
+                },
+                {
+                  "key": "files",
+                  "type": "file",
+                  "src": "fixtures/sample.txt"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Close Record",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/compliance/close/{{record_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "compliance",
+                "close",
+                "{{record_id}}"
+              ]
+            },
+            "description": "Admin-only close.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "remarks",
+                  "value": "Closing record via Postman dummy remarks.",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Admin",
+      "item": [
+        {
+          "name": "List Admins",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/compliance/admins?type=query&page=1&page_size=10",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "compliance",
+                "admins"
+              ],
+              "query": [
+                {
+                  "key": "type",
+                  "value": "query"
+                },
+                {
+                  "key": "search",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "page_size",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "type: Gift Declaration | Complaint | Query | Annual Declaration | Self Declaration"
+          },
+          "response": []
+        },
+        {
+          "name": "Assign Admin",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/compliance/assign/{{record_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "compliance",
+                "assign",
+                "{{record_id}}"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"staff_id\": \"{{assign_staff_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Files",
+      "item": [
+        {
+          "name": "Download File (SAS URL)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/compliance/querys/files?path={{file_path}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "compliance",
+                "querys",
+                "files"
+              ],
+              "query": [
+                {
+                  "key": "path",
+                  "value": "{{file_path}}"
+                }
+              ]
+            },
+            "description": "path must start with /helpdesk/"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Annual Declarations",
+      "item": [
+        {
+          "name": "Declaration Types",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/declarations/declarationtypes",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "declarations",
+                "declarationtypes"
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "User Declaration Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/declarations/user-declaration-status",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "declarations",
+                "user-declaration-status"
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Head Summary",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/declarations/head-summary",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "declarations",
+                "head-summary"
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Head Summary Export",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/declarations/head-summary/export?declaration_name=COBCE/COI",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "declarations",
+                "head-summary",
+                "export"
+              ],
+              "query": [
+                {
+                  "key": "declaration_name",
+                  "value": "COBCE/COI"
+                }
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Create Declaration",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/declarations/create-declaration",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "declarations",
+                "create-declaration"
+              ]
+            },
+            "description": "Copy returned id into declaration_id.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"declaration_name\": \"COBCE/COI\",\n  \"financial_year\": \"2025-26\",\n  \"assigned_date\": \"2026-04-01\",\n  \"due_date\": \"2026-06-30\",\n  \"activity_closure_date\": \"2026-07-15\",\n  \"status\": \"Pending\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List Declarations",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/declarations/list-declarations?page=1&page_size=25",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "declarations",
+                "list-declarations"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "page_size",
+                  "value": "25"
+                },
+                {
+                  "key": "declaration_name",
+                  "value": "COBCE/COI",
+                  "disabled": true
+                },
+                {
+                  "key": "financial_year",
+                  "value": "2025-26",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Admin only"
+          },
+          "response": []
+        },
+        {
+          "name": "Edit Declaration",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/declarations/edit-declaration/{{declaration_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "declarations",
+                "edit-declaration",
+                "{{declaration_id}}"
+              ]
+            },
+            "description": "Admin only",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"due_date\": \"2026-07-31\",\n  \"activity_closure_date\": \"2026-08-15\",\n  \"status\": \"Pending\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Export Declarations",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/declarations/export-declarations",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "declarations",
+                "export-declarations"
+              ],
+              "query": [
+                {
+                  "key": "financial_year",
+                  "value": "2025-26",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Admin only \u2014 downloads xlsx"
+          },
+          "response": []
+        },
+        {
+          "name": "Declaration Responses",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/declarations/declaration-responses/{{declaration_id}}?staff_id={{staff_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "declarations",
+                "declaration-responses",
+                "{{declaration_id}}"
+              ],
+              "query": [
+                {
+                  "key": "staff_id",
+                  "value": "{{staff_id}}"
+                }
+              ]
+            },
+            "description": "staff_id required for master admin"
+          },
+          "response": []
+        },
+        {
+          "name": "Save Declaration (draft)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/declarations/save-declaration/{{declaration_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "declarations",
+                "save-declaration",
+                "{{declaration_id}}"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"draft\",\n  \"responses\": [\n    {\n      \"question_id\": \"COBCE_Q1\",\n      \"response\": \"option_a\",\n      \"declaration_details\": null\n    },\n    {\n      \"question_id\": \"COI_PREFACE\",\n      \"response\": \"true\",\n      \"declaration_details\": null\n    },\n    {\n      \"question_id\": \"COI_Q1\",\n      \"response\": \"agree\",\n      \"declaration_details\": null\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Save Declaration (submit)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/declarations/save-declaration/{{declaration_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "declarations",
+                "save-declaration",
+                "{{declaration_id}}"
+              ]
+            },
+            "description": "Adjust responses if validation requires more fields.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"submit\",\n  \"responses\": [\n    {\n      \"question_id\": \"COBCE_Q1\",\n      \"response\": \"option_a\"\n    },\n    {\n      \"question_id\": \"COI_PREFACE\",\n      \"response\": \"true\"\n    },\n    {\n      \"question_id\": \"COI_Q1\",\n      \"response\": \"agree\"\n    },\n    {\n      \"question_id\": \"COI_Q2\",\n      \"response\": \"agree\"\n    },\n    {\n      \"question_id\": \"COI_Q3\",\n      \"response\": \"agree\"\n    },\n    {\n      \"question_id\": \"COI_Q4\",\n      \"response\": \"agree\"\n    },\n    {\n      \"question_id\": \"COI_Q5\",\n      \"response\": \"agree\"\n    },\n    {\n      \"question_id\": \"COI_Q6\",\n      \"response\": \"agree\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Upload Declaration File",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/declarations/upload-declaration-file/{{declaration_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "declarations",
+                "upload-declaration-file",
+                "{{declaration_id}}"
+              ]
+            },
+            "description": "Requires a valid staff-list Excel for your environment.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "fixtures/sample_declaration.xlsx"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Download Declaration Template",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/declarations/download-declaration-file",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "declarations",
+                "download-declaration-file"
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Download Declaration File by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/declarations/download-declaration-file/{{declaration_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "declarations",
+                "download-declaration-file",
+                "{{declaration_id}}"
+              ]
+            },
+            "description": "Admin only"
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
