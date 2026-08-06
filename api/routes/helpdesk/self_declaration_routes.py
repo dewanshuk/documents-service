@@ -9,7 +9,7 @@ from services.self_declaration_service import (
     save_self_declaration,
 )
 from utils.deps import get_current_user
-from utils.authorize import is_active_cobce_coi_gift_lead
+from utils.authorize import is_lead_for_type
 from utils.email_notifications import notify_record_created
 from .self_declaration_config import SELF_DECLARATION_FORM_CONFIG
 from .route_utils import log_and_json_response
@@ -39,9 +39,7 @@ async def get_self_declaration_endpoint(
 ):
     """Get COBCE / COI self-declaration by id (draft or submitted)."""
     staff_id = user["staff_id"]
-    is_admin = user.get("is_master_admin", False) or await is_active_cobce_coi_gift_lead(
-        staff_id
-    )
+    is_admin = is_lead_for_type(user, "cobce")
     try:
         data = await get_self_declaration_by_id(record_id, staff_id, is_admin)
         return log_and_json_response(

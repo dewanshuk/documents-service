@@ -45,6 +45,23 @@ async def is_helpdesk_admin(user: dict) -> bool:
     return is_active_helpdesk_admin(db_user)
 
 
+RECORD_TYPE_LEAD_FLAG = {
+    "query": "is_query_lead",
+    "gift": "is_cobce_coi_gift_lead",
+    "complaint": "is_complaint_lead",
+    "cobce": "is_cobce_coi_gift_lead",
+    "coi": "is_cobce_coi_gift_lead",
+}
+
+
+def is_lead_for_type(user: dict, record_type: str) -> bool:
+    """Lead/admin check from the already-loaded current-user dict (no DB)."""
+    if as_bool(user.get("is_master_admin")):
+        return True
+    flag = RECORD_TYPE_LEAD_FLAG.get(record_type)
+    return as_bool(user.get(flag)) if flag else False
+
+
 ALL_HELPDESK_TYPES = {"Query", "Complaint", "Gift Declaration", "Self Declaration"}
 
 # Dashboard section visibility per lead/role flag (Annual Declaration is excluded

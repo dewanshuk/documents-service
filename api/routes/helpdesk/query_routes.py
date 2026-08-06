@@ -10,17 +10,12 @@ from db.db_manager import db_manager
 from db.models.helpdesk import ComplianceQuery, COBCEDeclarations, COIDeclarations
 from db.validators.comp_help import QueryType
 from storage.storage_ops import upload_files, init_json, append_json, read_json, resolve_file_urls
-from utils.authorize import (
-    is_active_cobce_coi_gift_lead,
-    is_active_complaint_lead,
-    is_active_query_lead,
-)
+from utils.authorize import is_lead_for_type
 from utils.actor_display import format_actor_name, format_pending_at
 from utils.helpers import (
     db_timestamp_now,
     get_type_and_model_by_id,
     validate_word_limit,
-    get_model_by_id,
     now_ist,
 )
 from utils.email_notifications import (
@@ -41,7 +36,7 @@ async def view_query(query_id: str, user: dict = Depends(get_current_user)):
     """Get the details and conversation history for a specific query."""
     try:
         try:
-            model = await get_model_by_id(query_id)
+            model, record_type = await get_type_and_model_by_id(query_id)
         except ValueError as e:
             return log_and_json_response(
                 user.get("staff_id"),
@@ -87,7 +82,12 @@ async def view_query(query_id: str, user: dict = Depends(get_current_user)):
         if getattr(record, "Status", None) == "Draft" or record.OverallStatus == "Closed":
             pending_at_display = "-"
         else:
-            pending_at_display = await format_pending_at(record.PendingAt, record.CreatedBy)
+            pending_at_display = await format_pending_at(
+                record.PendingAt,
+                record.CreatedBy,
+                is_admin=is_lead_for_type(user, record_type),
+                assigned_to=getattr(record, "AssignedTo", None),
+            )
 
         actor_name = await format_actor_name(record.CreatedBy)
         closed_by_name = await format_actor_name(getattr(record, "ClosedBy", None))
@@ -175,6 +175,7 @@ async def raise_query(
                     "actorId": user["staff_id"],
                     "actor_name": await format_actor_name(user["staff_id"]),
                     "dateTime": now.isoformat(),
+                    
                     "data": {
                         "title": title,
                         "description": description,
@@ -309,39 +310,42 @@ async def respond(
                 {"error": "Already closed"},
             )
 
-        persona_check = False
-        if record.PendingAt == 0:
-            if (
-                record_type in ["cobce", "coi", "gift"]
-                and user["staff_id"] != record.CreatedBy
-            ):
-                persona_check = await is_active_cobce_coi_gift_lead(user["staff_id"])
-            elif record_type == "complaint" and user["staff_id"] != record.CreatedBy:
-                persona_check = await is_active_complaint_lead(user["staff_id"])
-            elif record_type == "query":
-                persona_check = await is_active_query_lead(user["staff_id"])
-            else:
-                persona_check = False
-            if not persona_check:
-                return log_and_json_response(
-                    user["staff_id"],
-                    {"query_id": query_id},
-                    "/query/{query_id}/respond",
-                    "POST",
-                    403,
-                    {"error": "Not Authorized to Perform this action."},
-                )
+        staff_id = user["staff_id"]
+        is_owner = staff_id == record.CreatedBy
+        is_admin = is_lead_for_type(user, record_type)
 
-        elif record.PendingAt == 1:
-            if user["staff_id"] != record.CreatedBy:
-                return log_and_json_response(
-                    user["staff_id"],
-                    {"query_id": query_id},
-                    "/query/{query_id}/respond",
-                    "POST",
-                    401,
-                    {"error": "Users can only respond to their own queries"},
-                )
+        if not is_owner and not is_admin:
+            return log_and_json_response(
+                staff_id,
+                {"query_id": query_id},
+                "/query/{query_id}/respond",
+                "POST",
+                403,
+                {"error": "Not Authorized to Perform this action."},
+            )
+
+        # PendingAt=1 → compliance turn, PendingAt=0 → owner's turn.
+        # Admins may only act as compliance on records they do not own.
+        acting_as_admin = is_admin and not is_owner
+        pending_at = record.PendingAt
+        if acting_as_admin and pending_at != 1:
+            return log_and_json_response(
+                staff_id,
+                {"query_id": query_id},
+                "/query/{query_id}/respond",
+                "POST",
+                403,
+                {"error": "Waiting for the user's response before you can respond again"},
+            )
+        if not acting_as_admin and pending_at != 0:
+            return log_and_json_response(
+                staff_id,
+                {"query_id": query_id},
+                "/query/{query_id}/respond",
+                "POST",
+                403,
+                {"error": "Waiting for the admin's response before you can respond again"},
+            )
 
         if len(files) > 6:
             return log_and_json_response(
@@ -365,8 +369,8 @@ async def respond(
                 {"error": str(e)},
             )
 
-        actor = "Compliance Team" if persona_check else "User"
-        next_pending = 1 if record.PendingAt == 0 else 0
+        actor = "Compliance Team" if acting_as_admin else "User"
+        next_pending = 0 if acting_as_admin else 1
         file_paths = await upload_files(query_id, actor, files)
         entry = {
             "actor": actor,
@@ -448,21 +452,7 @@ async def close_query(
                 {"error": "Record Not found"},
             )
 
-        persona_check = False
-        if record.PendingAt == 0:
-            if (
-                record_type in ["cobce", "coi", "gift"]
-                and user["staff_id"] != record.CreatedBy
-            ):
-                persona_check = await is_active_cobce_coi_gift_lead(user["staff_id"])
-            elif record_type == "complaint" and user["staff_id"] != record.CreatedBy:
-                persona_check = await is_active_complaint_lead(user["staff_id"])
-            elif record_type == "query":
-                persona_check = await is_active_query_lead(user["staff_id"])
-            else:
-                persona_check = False
-
-        if not persona_check:
+        if not is_lead_for_type(user, record_type):
             return log_and_json_response(
                 user["staff_id"],
                 {"query_id": query_id, "comment": comment},

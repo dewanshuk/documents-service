@@ -427,12 +427,15 @@ def _finalize_item(item: dict, name_map: dict[str, str], admin_types: set[str]) 
     else:
         item["pending_at"] = None
 
+    overall = (item.get("overall_status") or "").lower()
+    is_closed = overall in ("closed", "completed")
+
     if is_admin and assigned_to_raw:
         item["assigned_to"] = _format_staff_display(assigned_to_raw, name_map)
-    elif assigned_to_raw or item["type"] != "Annual Declaration":
+    elif item["type"] == "Annual Declaration" or is_closed:
         item["assigned_to"] = None
     else:
-        item["assigned_to"] = None
+        item["assigned_to"] = "Compliance Team"
 
     item["closed_at"] = _format_date(closed_at_raw)
 

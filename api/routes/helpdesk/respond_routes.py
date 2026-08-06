@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 
 from utils.deps import get_current_user
 from utils.record_ids import resolve_record
-from utils.authorize import is_active_cobce_coi_gift_lead, is_active_complaint_lead, is_active_query_lead
+from utils.authorize import is_lead_for_type
 from utils.actor_display import format_actor_name, format_pending_at
 from utils.email_notifications import notify_record_responded, notify_record_closed
 from db.db_manager import db_manager
@@ -16,14 +16,6 @@ from utils.helpers import now_ist, db_timestamp_now, validate_word_limit, format
 from core.openapi_tags import TAG_COMMON
 
 router = APIRouter(tags=[TAG_COMMON])
-
-ADMIN_ROLE_CHECKERS = {
-    "query": is_active_query_lead,
-    "gift": is_active_cobce_coi_gift_lead,
-    "complaint": is_active_complaint_lead,
-    "cobce": is_active_cobce_coi_gift_lead,
-    "coi": is_active_cobce_coi_gift_lead,
-}
 
 CREATED_BY_FIELD = {
     "query": "CreatedBy",
@@ -86,8 +78,7 @@ async def get_conversation(
         created_by = getattr(record, CREATED_BY_FIELD[record_type])
         is_owner = created_by == staff_id
 
-        checker = ADMIN_ROLE_CHECKERS.get(record_type)
-        is_admin = await checker(staff_id) if checker else False
+        is_admin = is_lead_for_type(user, record_type)
 
         if not is_owner and not is_admin:
             return log_and_json_response(
@@ -118,7 +109,12 @@ async def get_conversation(
         async def _pending_at_or_dash():
             if is_draft_or_closed:
                 return "-"
-            return await format_pending_at(getattr(record, "PendingAt", None), created_by)
+            return await format_pending_at(
+                getattr(record, "PendingAt", None),
+                created_by,
+                is_admin=is_admin,
+                assigned_to=getattr(record, "AssignedTo", None),
+            )
 
         # Resolve actor names and pending-at label in parallel (3 DB lookups → 1 round-trip).
         actor_name, closed_by_name, pending_at_display = await asyncio.gather(
@@ -217,8 +213,7 @@ async def respond_to_record(
         created_by = getattr(record, CREATED_BY_FIELD[record_type])
         is_owner = created_by == staff_id
 
-        checker = ADMIN_ROLE_CHECKERS.get(record_type)
-        is_admin = await checker(staff_id) if checker else False
+        is_admin = is_lead_for_type(user, record_type)
 
         if not is_owner and not is_admin:
             return log_and_json_response(
@@ -327,8 +322,7 @@ async def close_record(
             )
 
         staff_id = user["staff_id"]
-        checker = ADMIN_ROLE_CHECKERS.get(record_type)
-        is_admin = await checker(staff_id) if checker else False
+        is_admin = is_lead_for_type(user, record_type)
 
         if not is_admin:
             return log_and_json_response(

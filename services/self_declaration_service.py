@@ -444,7 +444,12 @@ async def get_self_declaration_by_id(
     if record.Status == "Draft" or record.OverallStatus == "Closed":
         data["pendingAt"] = "-"
     else:
-        data["pendingAt"] = await format_pending_at(record.PendingAt, record.CreatedBy)
+        data["pendingAt"] = await format_pending_at(
+            record.PendingAt,
+            record.CreatedBy,
+            is_admin=is_admin,
+            assigned_to=getattr(record, "AssignedTo", None),
+        )
     data["actor_name"] = await format_actor_name(record.CreatedBy)
     data["closed_by_name"] = await format_actor_name(record.ClosedBy)
 

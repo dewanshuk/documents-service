@@ -23,9 +23,20 @@ async def format_actor_name(staff_id: Optional[str]) -> Optional[str]:
     return f"{username} ({staff_id})"
 
 
-async def format_pending_at(pending_at: Optional[int], created_by: Optional[str]) -> str:
-    """Common pendingAt display: creator's name when pending on the user, else Compliance Team."""
+async def format_pending_at(
+    pending_at: Optional[int],
+    created_by: Optional[str],
+    is_admin: bool = False,
+    assigned_to: Optional[str] = None,
+) -> str:
+    """Common pendingAt display: creator's name when pending on the user, else Compliance Team.
+
+    When the viewer is an admin and the record is pending on compliance (pending_at == 1),
+    show the actual assigned admin's name instead of the generic label, if one is assigned.
+    """
     if pending_at == 1:
+        if is_admin and assigned_to:
+            return await format_actor_name(assigned_to) or COMPLIANCE_TEAM_LABEL
         return COMPLIANCE_TEAM_LABEL
     if pending_at == 0:
         return await format_actor_name(created_by) or COMPLIANCE_TEAM_LABEL

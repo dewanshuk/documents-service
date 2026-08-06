@@ -7,7 +7,12 @@ from sqlalchemy import select, func, or_
 
 from utils.deps import get_current_user
 from utils.record_ids import resolve_record
-from utils.authorize import is_active_cobce_coi_gift_lead, is_active_complaint_lead, is_active_query_lead
+from utils.authorize import (
+    is_active_cobce_coi_gift_lead,
+    is_active_complaint_lead,
+    is_active_query_lead,
+    is_lead_for_type,
+)
 from utils.email_notifications import notify_record_assigned
 from core.constants import RECORD_TYPE_LEAD_MAP
 from db.db_manager import get_session, db_manager
@@ -137,10 +142,7 @@ async def assign_admin(
             )
 
         caller_id = user["staff_id"]
-        checker = ADMIN_ROLE_CHECKERS.get(record_type)
-        is_admin = await checker(caller_id) if checker else False
-
-        if not is_admin:
+        if not is_lead_for_type(user, record_type):
             return log_and_json_response(
                 caller_id, {"record_id": record_id},
                 "/assign/{record_id}", "PUT", 403,
@@ -155,6 +157,14 @@ async def assign_admin(
                 {"error": "Record not found"},
             )
 
+        created_by = getattr(record, "CreatedBy", None)
+        if staff_id == created_by:
+            return log_and_json_response(
+                caller_id, {"record_id": record_id, "staff_id": staff_id},
+                "/assign/{record_id}", "PUT", 400,
+                {"error": "Cannot assign a record to its creator"},
+            )
+
         target_checker = ADMIN_ROLE_CHECKERS.get(record_type)
         if target_checker:
             is_target_admin = await target_checker(staff_id)
@@ -167,7 +177,6 @@ async def assign_admin(
 
         await db_manager.update(model, db_id, {"AssignedTo": staff_id})
 
-        created_by = getattr(record, "CreatedBy", "")
         title = getattr(record, "Title", getattr(record, "ComplaintType", getattr(record, "SubType", "")))
         asyncio.create_task(notify_record_assigned(
             record_type, db_id, staff_id, caller_id, created_by,
