@@ -121,7 +121,9 @@ async def assign_admin(
     user: dict = Depends(get_current_user),
 ):
     """
-    Assign an admin to a record. Only admins with the appropriate lead role can assign.
+    Assign an admin to a record. Only the matching type lead can assign
+    (not master admin / CCO unless they also have that lead flag).
+    Cannot assign to yourself or the creator. Reassignment is allowed.
     Does not apply to Annual Declarations.
     """
     try:
@@ -146,7 +148,14 @@ async def assign_admin(
             return log_and_json_response(
                 caller_id, {"record_id": record_id},
                 "/assign/{record_id}", "PUT", 403,
-                {"error": "Only admins can assign records"},
+                {"error": "Only type leads can assign records"},
+            )
+
+        if staff_id == caller_id:
+            return log_and_json_response(
+                caller_id, {"record_id": record_id, "staff_id": staff_id},
+                "/assign/{record_id}", "PUT", 400,
+                {"error": "Cannot assign a record to yourself"},
             )
 
         record = await db_manager.get(model, db_id)

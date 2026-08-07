@@ -55,18 +55,15 @@ RECORD_TYPE_LEAD_FLAG = {
 
 
 def is_lead_for_type(user: dict, record_type: str) -> bool:
-    """Lead/admin check from the already-loaded current-user dict (no DB)."""
-    if as_bool(user.get("is_master_admin")):
-        return True
+    """True only when the user has the type-specific lead flag (no master/CCO bypass)."""
     flag = RECORD_TYPE_LEAD_FLAG.get(record_type)
     return as_bool(user.get(flag)) if flag else False
 
 
 ALL_HELPDESK_TYPES = {"Query", "Complaint", "Gift Declaration", "Self Declaration"}
 
-# Dashboard section visibility per lead/role flag (Annual Declaration is excluded
-# here: its own visibility rules are handled separately in dashboard_service, based
-# on is_master_admin / is_cheif_compliance_officer).
+# Dashboard section visibility per lead/role flag. Annual Declaration is always
+# own-scoped (pending + completed) in dashboard_service.
 DASHBOARD_ROLE_SECTIONS = {
     "is_cheif_compliance_officer": ALL_HELPDESK_TYPES,
     "is_policy_hub_admin": {"Self Declaration", "Complaint", "Query"},
@@ -84,13 +81,10 @@ def get_dashboard_type_scope(user: dict) -> tuple[set[str], set[str]]:
     - admin_types: role-granted types where org-wide admin records are added
       on top of the user's own records; remaining types stay own-scoped.
 
-    is_master_admin / is_knowledge_hub_admin keep full unrestricted access.
-    Users with none of the DASHBOARD_ROLE_SECTIONS flags see every section,
-    scoped to their own records only.
+    Master admin / knowledge hub without a matching lead/role flag are treated
+    as normal users (own records only). Users with none of the
+    DASHBOARD_ROLE_SECTIONS flags see every section, own-scoped.
     """
-    if as_bool(user.get("is_master_admin")) or as_bool(user.get("is_knowledge_hub_admin")):
-        return set(ALL_HELPDESK_TYPES), set(ALL_HELPDESK_TYPES)
-  
     granted: set[str] = set()
     for flag, sections in DASHBOARD_ROLE_SECTIONS.items():
         if as_bool(user.get(flag)):

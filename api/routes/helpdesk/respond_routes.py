@@ -232,8 +232,23 @@ async def respond_to_record(
         # Turn-based enforcement: PendingAt=1 → admin's turn, PendingAt=0 → owner's
         # turn. Admins may only act as Admin on records they do not own; on their
         # own records they can only respond as User (when PendingAt=0).
+        # Admin response requires assignment to this lead.
         pending_at = getattr(record, "PendingAt", None)
         acting_as_admin = is_admin and not is_owner
+        if acting_as_admin:
+            assigned_to = getattr(record, "AssignedTo", None)
+            if not assigned_to:
+                return log_and_json_response(
+                    staff_id, {"record_id": record_id},
+                    "/respond/{record_id}", "POST", 403,
+                    {"error": "Record must be assigned before an admin can respond"},
+                )
+            if assigned_to != staff_id:
+                return log_and_json_response(
+                    staff_id, {"record_id": record_id},
+                    "/respond/{record_id}", "POST", 403,
+                    {"error": "Only the assigned admin can respond to this record"},
+                )
         if acting_as_admin and pending_at != 1:
             return log_and_json_response(
                 staff_id, {"record_id": record_id},
@@ -310,7 +325,7 @@ async def close_record(
     remarks: str = Form(...),
     user: dict = Depends(get_current_user),
 ):
-    """Admin closes a compliance record."""
+    """Creator or assigned admin closes a compliance record (anytime)."""
     try:
         try:
             model, record_type, db_id = await resolve_record(record_id)
@@ -322,14 +337,6 @@ async def close_record(
             )
 
         staff_id = user["staff_id"]
-        is_admin = is_lead_for_type(user, record_type)
-
-        if not is_admin:
-            return log_and_json_response(
-                staff_id, {"record_id": record_id},
-                "/close/{record_id}", "POST", 403,
-                {"error": "Only admins can close records"},
-            )
 
         try:
             validate_word_limit(remarks, 500)
@@ -346,6 +353,23 @@ async def close_record(
                 staff_id, {"record_id": record_id},
                 "/close/{record_id}", "POST", 404,
                 {"error": "Record not found"},
+            )
+
+        if getattr(record, "OverallStatus", None) in ("Closed", "Completed"):
+            return log_and_json_response(
+                staff_id, {"record_id": record_id},
+                "/close/{record_id}", "POST", 400,
+                {"error": "Record is already closed"},
+            )
+
+        created_by = getattr(record, "CreatedBy", None)
+        is_owner = created_by == staff_id
+        is_assigned_admin = getattr(record, "AssignedTo", None) == staff_id
+        if not is_owner and not is_assigned_admin:
+            return log_and_json_response(
+                staff_id, {"record_id": record_id},
+                "/close/{record_id}", "POST", 403,
+                {"error": "Only the creator or assigned admin can close this record"},
             )
 
         closure_date = db_timestamp_now()
@@ -367,9 +391,10 @@ async def close_record(
 
         json_path = getattr(record, "ResponseJsonPath", None)
         if json_path:
+            actor = "User" if is_owner else "Admin"
             conv = await _load_conversation(json_path)
             conv["conversation"].append({
-                "actor": "Compliance Team",
+                "actor": actor,
                 "actorId": staff_id,
                 "actor_name": await format_actor_name(staff_id),
                 "dateTime": now_ist().isoformat(),
@@ -378,10 +403,9 @@ async def close_record(
             })
             await _save_conversation(json_path, conv)
 
-        created_by = getattr(record, "CreatedBy", "")
         title = getattr(record, "Title", getattr(record, "ComplaintType", getattr(record, "SubType", "")))
         asyncio.create_task(notify_record_closed(
-            record_type, db_id, staff_id, created_by,
+            record_type, db_id, staff_id, created_by or "",
             title=title,
         ))
 

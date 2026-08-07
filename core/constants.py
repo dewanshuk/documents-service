@@ -35,5 +35,5 @@ RECORD_TYPE_LEAD_MAP = {
     "complaint": "is_complaint_lead",
     "query": "is_query_lead",
     "annual declaration": "is_knowledge_hub_admin",
-    "self declaration": "is_knowledge_hub_admin",
+    "self declaration": "is_cobce_coi_gift_lead",
 }

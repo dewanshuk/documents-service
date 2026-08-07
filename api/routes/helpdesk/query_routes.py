@@ -326,8 +326,29 @@ async def respond(
 
         # PendingAt=1 → compliance turn, PendingAt=0 → owner's turn.
         # Admins may only act as compliance on records they do not own.
+        # Admin response requires assignment to this lead.
         acting_as_admin = is_admin and not is_owner
         pending_at = record.PendingAt
+        if acting_as_admin:
+            assigned_to = getattr(record, "AssignedTo", None)
+            if not assigned_to:
+                return log_and_json_response(
+                    staff_id,
+                    {"query_id": query_id},
+                    "/query/{query_id}/respond",
+                    "POST",
+                    403,
+                    {"error": "Record must be assigned before an admin can respond"},
+                )
+            if assigned_to != staff_id:
+                return log_and_json_response(
+                    staff_id,
+                    {"query_id": query_id},
+                    "/query/{query_id}/respond",
+                    "POST",
+                    403,
+                    {"error": "Only the assigned admin can respond to this record"},
+                )
         if acting_as_admin and pending_at != 1:
             return log_and_json_response(
                 staff_id,
@@ -452,17 +473,19 @@ async def close_query(
                 {"error": "Record Not found"},
             )
 
-        if not is_lead_for_type(user, record_type):
+        is_owner = user["staff_id"] == record.CreatedBy
+        is_assigned_admin = getattr(record, "AssignedTo", None) == user["staff_id"]
+        if not is_owner and not is_assigned_admin:
             return log_and_json_response(
                 user["staff_id"],
                 {"query_id": query_id, "comment": comment},
                 "/query/{query_id}/close",
                 "POST",
                 403,
-                {"error": "Not Authorized to Perform this action."},
+                {"error": "Only the creator or assigned admin can close this record"},
             )
 
-        if record.OverallStatus == "Closed":
+        if record.OverallStatus in ("Closed", "Completed"):
             return log_and_json_response(
                 user["staff_id"],
                 {"query_id": query_id, "comment": comment},
@@ -484,8 +507,9 @@ async def close_query(
                 {"error": str(e)},
             )
 
+        actor = "User" if is_owner else "Compliance Team"
         entry = {
-            "actor": "Compliance Team",
+            "actor": actor,
             "actorId": user["staff_id"],
             "actor_name": await format_actor_name(user["staff_id"]),
             "dateTime": now_ist().isoformat(),

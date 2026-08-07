@@ -498,7 +498,14 @@ def _helpdesk_where_clauses(
         own_draft = and_(model.CreatedBy == staff_id, is_draft)
         own_clause = or_(own_actionable, own_draft)
         if is_admin:
-            admin_clause = and_(not_completed, model.PendingAt == 1, ~is_draft)
+            # Own records never enter the admin queue — leads act as employees
+            # on anything they raised themselves.
+            admin_clause = and_(
+                not_completed,
+                model.PendingAt == 1,
+                ~is_draft,
+                model.CreatedBy != staff_id,
+            )
             clauses.append(or_(own_clause, admin_clause))
         else:
             clauses.append(own_clause)
@@ -516,6 +523,7 @@ def _helpdesk_where_clauses(
         if is_admin:
             admin_clause = and_(
                 ~is_draft,
+                model.CreatedBy != staff_id,
                 or_(
                     model.PendingAt == 0,
                     func.lower(model.OverallStatus) == "completed",
@@ -706,7 +714,7 @@ async def _count_helpdesk(
 
 
 def _annual_where_clauses(
-    staff_id: str, tab: str, params: FilterParams, is_admin_view: bool = False,
+    staff_id: str, tab: str, params: FilterParams, _is_admin_view: bool = False,
 ):
     today = date.today()
     updated_col = func.coalesce(
@@ -726,11 +734,10 @@ def _annual_where_clauses(
         clauses.append(UserDeclarationStatus.status != "completed")
         clauses.append(AnnualDeclaration.due_date >= today)
     else:
-        # All tab: completed records only. Admin / CCO see completed records
-        # org-wide; everyone else sees only their own completed records.
+        # All tab: completed records only — always own-scoped (including
+        # master admin / CCO).
         clauses.append(UserDeclarationStatus.status == "completed")
-        if not is_admin_view:
-            clauses.append(UserDeclarationStatus.staff_id == staff_id)
+        clauses.append(UserDeclarationStatus.staff_id == staff_id)
 
     if params.sub_type:
         clauses.append(
