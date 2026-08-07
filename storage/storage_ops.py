@@ -57,14 +57,50 @@ def _uri_to_blob(json_uri: str) -> tuple[str, str]:
     return COMPLIANCE_CONTAINER, json_uri.lstrip("/")
 
 
+MAX_ATTACHMENT_FILES = 6
+MAX_COBCE_ROWS = 5
+
+
+def normalize_stored_files(entries: Optional[list]) -> list[dict[str, str]]:
+    normalized: list[dict[str, str]] = []
+    for entry in entries or []:
+        if isinstance(entry, dict):
+            path = str(entry.get("path") or "")
+            filename = str(entry.get("filename") or Path(path).name)
+        else:
+            path = str(entry or "")
+            filename = Path(path).name
+        if path and filename:
+            normalized.append({"path": path, "filename": filename})
+    return normalized
+
+
+def build_upload_pool(files: list[UploadFile]) -> dict[str, UploadFile]:
+    """Map upload filename -> UploadFile. Rejects duplicate upload names."""
+    pool: dict[str, UploadFile] = {}
+    for upload in files:
+        name = Path(upload.filename or "file").name
+        if name in pool:
+            raise ValueError(f"Duplicate filenames in upload: {name}")
+        pool[name] = upload
+    return pool
+
+
 async def upload_files(
-    record_id: str, actor: str, files: list[UploadFile]
+    record_id: str,
+    actor: str,
+    files: list[UploadFile],
+    *,
+    prefix: str | None = None,
 ) -> list[dict[str, str]]:
     container = await get_container_client(COMPLIANCE_CONTAINER)
     stored: list[dict[str, str]] = []
     for upload in files:
         filename = Path(upload.filename or "file").name
-        relative = f"{record_id}/{actor}/{filename}"
+        if prefix:
+            relative = f"{record_id}/{prefix}/{actor}/{filename}"
+        else:
+            relative = f"{record_id}/{actor}/{filename}"
         blob_name = f"helpdesk/{relative}"
         content = await upload.read()
         await container.get_blob_client(blob_name).upload_blob(
@@ -74,6 +110,123 @@ async def upload_files(
             {"path": _to_compliance_uri(relative), "filename": filename}
         )
     return stored
+
+
+async def resolve_desired_files(
+    record_id: str,
+    existing_files: Optional[list],
+    desired_names: Optional[list[str]],
+    upload_pool: dict[str, UploadFile],
+    *,
+    actor: str = "user",
+    prefix: str | None = None,
+) -> list[dict[str, str]]:
+    """
+    desired_names None → leave existing unchanged (does not consume uploads).
+    desired_names [] → remove all existing.
+    desired_names [names] → final set; each name from existing or upload_pool
+    (matched by filename). Consumes matched uploads from the pool.
+    """
+    existing = normalize_stored_files(existing_files)
+    if desired_names is None:
+        return existing
+
+    if len(desired_names) != len(set(desired_names)):
+        raise ValueError("Duplicate filenames in files list")
+    if len(desired_names) > MAX_ATTACHMENT_FILES:
+        raise ValueError(f"Max {MAX_ATTACHMENT_FILES} files allowed")
+
+    existing_by_name = {item["filename"]: item for item in existing}
+    to_upload: list[UploadFile] = []
+    for name in desired_names:
+        if name in existing_by_name and name in upload_pool:
+            raise ValueError(f"Duplicate filename(s): {name}")
+        if name in existing_by_name:
+            continue
+        if name not in upload_pool:
+            raise ValueError(f"Unknown file: {name}")
+        to_upload.append(upload_pool.pop(name))
+
+    desired_set = set(desired_names)
+    to_delete = [item for item in existing if item["filename"] not in desired_set]
+    if to_delete:
+        await delete_compliance_files(to_delete)
+
+    uploaded = (
+        await upload_files(record_id, actor, to_upload, prefix=prefix)
+        if to_upload
+        else []
+    )
+    uploaded_by_name = {item["filename"]: item for item in uploaded}
+
+    result: list[dict[str, str]] = []
+    for name in desired_names:
+        if name in existing_by_name:
+            result.append(existing_by_name[name])
+        else:
+            result.append(uploaded_by_name[name])
+    return result
+
+
+async def resolve_keep_upload_files(
+    record_id: str,
+    existing_files: Optional[list],
+    files: list[UploadFile],
+    keep_files: Optional[list[str]],
+    *,
+    actor: str = "user",
+    prefix: str | None = None,
+) -> list[dict[str, str]]:
+    """
+    Single-target resolve: keep_files is the desired final filename list.
+    None → leave existing; [] → clear; [names] → existing and/or uploads by name.
+    Unmapped uploads raise.
+    """
+    pool = build_upload_pool(files)
+    resolved = await resolve_desired_files(
+        record_id,
+        existing_files,
+        keep_files,
+        pool,
+        actor=actor,
+        prefix=prefix,
+    )
+    if pool:
+        raise ValueError(
+            f"Unmapped uploaded file(s): {', '.join(sorted(pool))}"
+        )
+    return resolved
+
+
+async def copy_compliance_files(
+    file_entries: Optional[list],
+    new_record_id: str,
+    actor: str = "user",
+) -> list[dict[str, str]]:
+    """Copy stored compliance blobs under a new record id; return new entries."""
+    source = normalize_stored_files(file_entries)
+    if not source:
+        return []
+
+    container = await get_container_client(COMPLIANCE_CONTAINER)
+    copied: list[dict[str, str]] = []
+    for item in source:
+        src_blob = item["path"].lstrip("/")
+        filename = item["filename"]
+        relative = f"{new_record_id}/{actor}/{filename}"
+        dest_blob = f"helpdesk/{relative}"
+        src_client = container.get_blob_client(src_blob)
+        if not await src_client.exists():
+            continue
+        downloader = await src_client.download_blob()
+        content = await downloader.readall()
+        await container.get_blob_client(dest_blob).upload_blob(
+            content, overwrite=True
+        )
+        copied.append(
+            {"path": _to_compliance_uri(relative), "filename": filename}
+        )
+    return copied
 
 
 async def init_json(record_id: str, json_data: dict) -> str:
@@ -205,6 +358,26 @@ async def generate_blob_sas_url(
         expiry=datetime.now(timezone.utc) + timedelta(minutes=expiry_minutes),
     )
     return f"https://{account_name}.blob.core.windows.net/{container}/{blob_name}?{sas_token}"
+
+
+async def delete_compliance_files(file_entries: Optional[list]) -> None:
+    """Delete compliance blobs by stored path. Missing blobs are ignored."""
+    if not file_entries:
+        return
+    container = await get_container_client(COMPLIANCE_CONTAINER)
+    for entry in file_entries:
+        if isinstance(entry, dict):
+            path = entry.get("path") or ""
+        else:
+            path = str(entry or "")
+        if not path:
+            continue
+        blob_name = path.lstrip("/")
+        try:
+            await container.get_blob_client(blob_name).delete_blob()
+        except Exception:
+            # Blob may already be gone; metadata removal still proceeds.
+            pass
 
 
 async def resolve_file_urls(

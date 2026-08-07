@@ -193,6 +193,10 @@ def validate_submission_responses(
                         f"{qid}: At least one detail row required "
                         f"when '{response_val}' is selected"
                     )
+                elif qid.startswith("COBCE") and len(details) > 5:
+                    errors.append(f"{qid}: at most 5 detail rows allowed")
+                elif qid.startswith("COI") and len(details) > 1:
+                    errors.append(f"{qid}: at most 1 detail row allowed")
 
         elif q_config["type"] == "checkbox" and response_val != "checked":
             errors.append(f"{qid}: Must be 'checked'")

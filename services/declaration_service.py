@@ -42,13 +42,23 @@ EXPORT_DECLARATION_HEADERS = [
     "Total Count",
 ]
 
-from storage.storage_ops import init_json
+from storage.storage_ops import (
+    MAX_COBCE_ROWS,
+    build_upload_pool,
+    copy_compliance_files,
+    delete_compliance_files,
+    init_json,
+    parse_files_list,
+    resolve_desired_files,
+    resolve_file_urls,
+)
 from db.validators import AnnualDeclarationFilters, AnnualDeclarationUpdate
 from api.routes.annual_dec.question_config import (
     CONFLICT_RESPONSES,
     get_question_config,
     validate_submission_responses,
 )
+from fastapi import UploadFile
 
 # Single user_declaration_responses row holds the full form JSON.
 FORM_RESPONSES_QUESTION_ID = "FORM_RESPONSES"
@@ -95,23 +105,85 @@ def _default_responses(decl_name: str) -> list[dict]:
     ]
 
 
-def _merge_responses_by_question_id(
+def _max_detail_rows(qid: str) -> int:
+    return 1 if qid.startswith("COI") else MAX_COBCE_ROWS
+
+
+async def _merge_responses(
+    storage_id: str,
     stored: list[dict],
     incoming: list[dict],
     decl_name: str,
+    uploads: list[UploadFile],
 ) -> list[dict]:
+    """Merge incoming answers and resolve per-detail-row files by filename."""
+    upload_pool = build_upload_pool(uploads)
     by_qid = {r["question_id"]: r for r in stored}
+    orphaned: list = []
+
     for resp in incoming:
         qid = resp["question_id"]
+        previous = by_qid.get(qid) or {}
+        prev_details = previous.get("declaration_details") or []
+        if not isinstance(prev_details, list):
+            prev_details = []
+
+        raw_details = resp.get("declaration_details")
+        if raw_details is None:
+            by_qid[qid] = {
+                "question_id": qid,
+                "response": resp.get("response"),
+                "declaration_details": previous.get("declaration_details"),
+            }
+            continue
+
+        if not isinstance(raw_details, list):
+            raise ValueError("declaration_details must be an array")
+        if len(raw_details) > _max_detail_rows(qid):
+            raise ValueError(
+                f"{qid}: at most {_max_detail_rows(qid)} detail row(s) allowed"
+            )
+
+        for dropped in prev_details[len(raw_details):]:
+            if isinstance(dropped, dict):
+                orphaned.extend(dropped.get("files") or [])
+
+        merged_details: list[dict] = []
+        for index, item in enumerate(raw_details):
+            if not isinstance(item, dict):
+                raise ValueError("declaration_details items must be objects")
+            prev_row = prev_details[index] if index < len(prev_details) else {}
+            row = {k: v for k, v in item.items() if k != "files"}
+            row["files"] = await resolve_desired_files(
+                storage_id,
+                prev_row.get("files") or [],
+                parse_files_list(item.get("files")),
+                upload_pool,
+                prefix=f"{qid}_row{index}",
+            )
+            merged_details.append(row)
+
         by_qid[qid] = {
             "question_id": qid,
             "response": resp.get("response"),
-            "declaration_details": resp.get("declaration_details"),
+            "declaration_details": merged_details,
         }
+
+    if upload_pool:
+        raise ValueError(
+            f"Unmapped uploaded file(s): {', '.join(sorted(upload_pool))}"
+        )
+    if orphaned:
+        await delete_compliance_files(orphaned)
+
     return [
         by_qid.get(
             qid,
-            {"question_id": qid, "response": None, "declaration_details": None},
+            {
+                "question_id": qid,
+                "response": None,
+                "declaration_details": None,
+            },
         )
         for qid in get_question_config(decl_name)
     ]
@@ -169,8 +241,10 @@ async def save_user_declaration(
     staff_id: str,
     responses: list[dict],
     status: str,
+    uploads: list[UploadFile] | None = None,
 ) -> dict:
     is_submit = status == "submit"
+    uploads = uploads or []
 
     async with get_session() as session:
         declaration = await session.get(AnnualDeclaration, declaration_id)
@@ -183,7 +257,6 @@ async def save_user_declaration(
             )
 
         decl_name = as_declaration_name(declaration.declaration_name)
-        question_config = get_question_config(decl_name)
 
         stmt = select(UserDeclarationStatus).where(
             and_(
@@ -207,7 +280,13 @@ async def save_user_declaration(
         stored = await _load_all_responses(session, status_record.id)
         if not stored:
             stored = _default_responses(decl_name)
-        merged = _merge_responses_by_question_id(stored, responses, decl_name)
+        merged = await _merge_responses(
+            status_record.id,
+            stored,
+            responses,
+            decl_name,
+            uploads,
+        )
         await _persist_form_responses(session, status_record.id, merged)
         await session.flush()
 
@@ -576,6 +655,14 @@ async def get_declaration_user_responses(
 
         prefilled = await _get_prefill_data(session, staff_id, decl_name)
 
+        responses = await _load_all_responses(session, status_record.id)
+        for resp in responses:
+            details = resp.get("declaration_details")
+            if isinstance(details, list):
+                for detail in details:
+                    if isinstance(detail, dict) and detail.get("files"):
+                        detail["files"] = await resolve_file_urls(detail["files"])
+
         return {
             "id": declaration.id,
             "user_status_id": status_record.id,
@@ -592,7 +679,7 @@ async def get_declaration_user_responses(
                 if status_record.submitted_at
                 else None
             ),
-            "responses": await _load_all_responses(session, status_record.id),
+            "responses": responses,
             "prefilled_declarations": prefilled,
         }
 
@@ -613,14 +700,17 @@ def _map_annual_coi_detail(qid: str, detail: dict, decl_name: str) -> dict:
     mapping = get_question_config(decl_name).get(qid, {}).get("form_field_map", {})
     form_data = {}
     for key, value in detail.items():
-        if key in ("self_declaration_id", "linked_declaration_id"):
+        if key in ("self_declaration_id", "linked_declaration_id", "files"):
             continue
         form_data[mapping.get(key, key)] = value
     return form_data
 
 
 async def _init_self_declaration_conversation(
-    record_id: str, staff_id: str, data: dict
+    record_id: str,
+    staff_id: str,
+    data: dict,
+    files: list | None = None,
 ) -> str:
     now = now_ist()
     json_data = {
@@ -631,7 +721,7 @@ async def _init_self_declaration_conversation(
                 "actorId": staff_id,
                 "dateTime": now.isoformat(),
                 "data": data,
-                "files": [],
+                "files": files or [],
             }
         ],
     }
@@ -644,7 +734,7 @@ async def _auto_create_self_declarations(
     """
     When user submits an annual declaration with disagree/option_b responses,
     create self-declaration rows in COBCE / COI tables (one per detail item).
-    Each record gets a conversation thread so user/admin can respond with files.
+    Each record gets a conversation thread; that detail row's files are copied.
     """
     created: list[dict] = []
     created_on = db_timestamp_now()
@@ -686,8 +776,12 @@ async def _auto_create_self_declarations(
                     "source": "annual_declaration",
                     "question_id": qid,
                 }
+                row_files = detail.get("files") or []
+                copied_files = await copy_compliance_files(
+                    row_files, record_id
+                )
                 json_path = await _init_self_declaration_conversation(
-                    record_id, staff_id, conv_data
+                    record_id, staff_id, conv_data, copied_files
                 )
                 session.add(
                     COBCEDeclarations(
@@ -732,8 +826,12 @@ async def _auto_create_self_declarations(
                     "source": "annual_declaration",
                     "question_id": qid,
                 }
+                row_files = detail.get("files") or []
+                copied_files = await copy_compliance_files(
+                    row_files, record_id
+                )
                 json_path = await _init_self_declaration_conversation(
-                    record_id, staff_id, conv_data
+                    record_id, staff_id, conv_data, copied_files
                 )
                 session.add(
                     COIDeclarations(

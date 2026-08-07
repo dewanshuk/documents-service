@@ -83,19 +83,47 @@ async def save_self_declaration_endpoint(
     description: Optional[str] = Form(None),
     rows: Optional[str] = Form(
         None,
-        description="COBCE only: JSON array of {nature_of_violation, person_responsible}",
+        description=(
+            "COBCE only: JSON array of "
+            "{nature_of_violation, person_responsible, files}. "
+            "files: null | [] | [filenames]; max 5 rows, 6 files per row. "
+            "Upload filenames must appear in a row's files list."
+        ),
     ),
-    formData: Optional[str] = Form(None),
+    formData: Optional[str] = Form(
+        None,
+        description=(
+            "COI only: JSON object of form fields. "
+            'Optional files: null (keep existing) | [] (clear) | '
+            '["evidence.xlsx"] or GET-style [{filename, ...}]. '
+            "New uploads must be attached and listed by filename."
+        ),
+    ),
     files: List[UploadFile] = File(default=[]),
     user: dict = Depends(get_current_user),
 ):
     """
     Unified save for self-declarations (COBCE or COI).
     Omit id to create; pass id to update an existing draft.
+    Multipart files are matched by filename to row.files (COBCE)
+    or formData.files (COI).
     """
     staff_id = user["staff_id"]
-    parsed_form = json.loads(formData) if formData else None
-    parsed_rows = json.loads(rows) if rows else None
+    record_id = id.strip() if id and id.strip() else None
+    try:
+        parsed_form = json.loads(formData) if formData else None
+        parsed_rows = json.loads(rows) if rows else None
+    except json.JSONDecodeError as e:
+        return log_and_json_response(
+            staff_id,
+            {"declaration_type": declaration_type, "status": status, "id": record_id},
+            "/self-declaration",
+            "POST",
+            400,
+            {"error": f"Invalid JSON: {e}"},
+        )
+
+    upload_files_list = [f for f in files if f.filename]
 
     try:
         result = await save_self_declaration(
@@ -103,13 +131,13 @@ async def save_self_declaration_endpoint(
             declaration_type=declaration_type,
             status=status,
             sub_type=subType,
-            record_id=id,
+            record_id=record_id,
             description=description,
             form_data=parsed_form,
-            files=files,
+            files=upload_files_list,
             rows=parsed_rows,
         )
-        http_status = 201 if not id and status == "draft" else 200
+        http_status = 201 if not record_id and status == "draft" else 200
         message = (
             "Declaration submitted successfully"
             if status == "submit"
@@ -127,7 +155,7 @@ async def save_self_declaration_endpoint(
             {
                 "declaration_type": declaration_type,
                 "status": status,
-                "id": id,
+                "id": record_id,
                 "subType": subType,
             },
             "/self-declaration",
@@ -138,7 +166,7 @@ async def save_self_declaration_endpoint(
     except ValueError as e:
         return log_and_json_response(
             staff_id,
-            {"declaration_type": declaration_type, "status": status, "id": id},
+            {"declaration_type": declaration_type, "status": status, "id": record_id},
             "/self-declaration",
             "POST",
             400,
@@ -147,7 +175,7 @@ async def save_self_declaration_endpoint(
     except Exception as e:
         return log_and_json_response(
             staff_id,
-            {"declaration_type": declaration_type, "status": status, "id": id},
+            {"declaration_type": declaration_type, "status": status, "id": record_id},
             "/self-declaration",
             "POST",
             500,

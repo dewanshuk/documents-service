@@ -6,9 +6,18 @@ Annual declaration questions live in api/routes/annual_dec/question_config.py.
 COBCE_SELF_DECLARATION = {
     "declaration_type": "cobce",
     "allows_multiple_rows": True,
+    "max_rows": 5,
+    "max_files_per_row": 6,
     "row_fields": [
         {"key": "nature_of_violation", "label": "Nature of violation", "required": True},
         {"key": "person_responsible", "label": "Person responsible", "required": True},
+        {
+            "key": "files",
+            "label": "Attachments",
+            "required": False,
+            "optional": True,
+            "default": None,
+        },
     ],
 }
 
@@ -74,6 +83,7 @@ COI_SELF_DECLARATION_QUESTIONS = [
 COI_SELF_DECLARATION = {
     "declaration_type": "coi",
     "select_one_question": True,
+    "max_files": 6,
     "questions": COI_SELF_DECLARATION_QUESTIONS,
 }
 

@@ -10,7 +10,17 @@ from db.models.helpdesk import (
     COIDeclarations,
 )
 from db.validators.comp_help import validate_coi_form
-from storage.storage_ops import init_json, load_json, upload_files, resolve_file_urls
+from storage.storage_ops import (
+    MAX_COBCE_ROWS,
+    build_upload_pool,
+    copy_compliance_files,
+    delete_compliance_files,
+    init_json,
+    load_json,
+    parse_files_list,
+    resolve_desired_files,
+    resolve_file_urls,
+)
 from utils.actor_display import format_actor_name, format_pending_at
 from utils.helpers import db_timestamp_now, now_ist
 from utils.record_ids import next_self_decl_id, resolve_record
@@ -32,6 +42,8 @@ def _normalize_cobce_rows(
     staff_id: str,
 ) -> list[dict]:
     if rows:
+        if len(rows) > MAX_COBCE_ROWS:
+            raise ValueError(f"COBCE allows at most {MAX_COBCE_ROWS} rows")
         normalized = []
         for i, row in enumerate(rows):
             nature = row.get("nature_of_violation") or row.get("description")
@@ -43,6 +55,7 @@ def _normalize_cobce_rows(
             normalized.append({
                 "nature_of_violation": nature,
                 "person_responsible": person,
+                "files": parse_files_list(row.get("files")),
             })
         return normalized
 
@@ -50,6 +63,7 @@ def _normalize_cobce_rows(
         return [{
             "nature_of_violation": description,
             "person_responsible": staff_id,
+            "files": None,
         }]
 
     raise ValueError(
@@ -72,6 +86,10 @@ async def save_self_declaration(
     """
     Unified save for COBCE / COI self-declarations.
     status: draft | submit — create when record_id is omitted, update when provided.
+
+    COBCE: each row may include optional files (null | [] | [filenames]).
+    COI: formData.files is optional (null | [] | [filenames]).
+    Multipart uploads are matched to those names by filename.
     """
     decl_type = declaration_type.lower()
     if decl_type not in ("cobce", "coi"):
@@ -81,10 +99,21 @@ async def save_self_declaration(
 
     if decl_type == "cobce":
         return await _save_cobce(
-            staff_id, status, sub_type, record_id, description, files or [], rows
+            staff_id,
+            status,
+            sub_type,
+            record_id,
+            description,
+            files or [],
+            rows,
         )
     return await _save_coi(
-        staff_id, status, sub_type, record_id, form_data or {}, files or []
+        staff_id,
+        status,
+        sub_type,
+        record_id,
+        form_data or {},
+        files or [],
     )
 
 
@@ -92,8 +121,7 @@ async def _submit_cobce_record(
     staff_id: str,
     sub_type: str,
     row: dict,
-    files: list[UploadFile],
-    attach_files: bool,
+    file_entries: list[dict[str, str]],
 ) -> str:
     record_id = await next_self_decl_id(staff_id)
     nature = row["nature_of_violation"]
@@ -118,8 +146,10 @@ async def _submit_cobce_record(
     )
 
     now = now_ist()
-    file_paths = (
-        await upload_files(record_id, "user", files) if attach_files else []
+    conv_files = (
+        await copy_compliance_files(file_entries, record_id)
+        if file_entries
+        else []
     )
     json_data = {
         "id": record_id,
@@ -135,7 +165,7 @@ async def _submit_cobce_record(
                     "description": nature,
                     "personDetails": person_details,
                 },
-                "files": file_paths,
+                "files": conv_files,
             }
         ],
     }
@@ -144,9 +174,9 @@ async def _submit_cobce_record(
         COBCEDeclarations,
         record_id,
         {
-            "Status": "Completed",
-            "PendingAt": 0,
-            "OverallStatus": "Completed",
+            "Status": "In-Progress",
+            "PendingAt": 1,
+            "OverallStatus": "Pending",
             "ResponseJsonPath": json_path,
         },
     )
@@ -164,90 +194,136 @@ async def _save_cobce(
 ) -> dict[str, Any]:
     cobce_rows = _normalize_cobce_rows(rows, description, staff_id)
     draft_record_id = record_id
+    existing_rows: list[dict] = []
+
+    if draft_record_id:
+        record = await db_manager.get(COBCEDeclarations, draft_record_id)
+        if not record:
+            raise ValueError("Declaration not found")
+        if record.CreatedBy != staff_id:
+            raise ValueError("Unauthorized")
+        if record.Status != "Draft":
+            raise ValueError("Only draft declarations can be edited")
+        existing_rows = _cobce_rows_from_record(record)
+    else:
+        draft_record_id = await next_self_decl_id(staff_id)
+        await db_manager.create(
+            COBCEDeclarations,
+            {
+                "COBCEId": draft_record_id,
+                "SubType": sub_type,
+                "Description": cobce_rows[0]["nature_of_violation"],
+                "PersonDetails": {
+                    "name": cobce_rows[0]["person_responsible"],
+                    "rows": [
+                        {
+                            "nature_of_violation": r["nature_of_violation"],
+                            "person_responsible": r["person_responsible"],
+                            "files": [],
+                        }
+                        for r in cobce_rows
+                    ],
+                },
+                "Status": "Draft",
+                "CreatedOn": db_timestamp_now(),
+                "CreatedBy": staff_id,
+                "OverallStatus": "Draft",
+                "PendingAt": 0,
+                "ResponseJsonPath": None,
+            },
+        )
+
+    upload_pool = build_upload_pool(files)
+    stored_rows: list[dict] = []
+    orphaned_files: list = []
+    if len(cobce_rows) < len(existing_rows):
+        for dropped in existing_rows[len(cobce_rows):]:
+            orphaned_files.extend(dropped.get("files") or [])
+
+    for index, row in enumerate(cobce_rows):
+        prev_files = []
+        if index < len(existing_rows):
+            prev_files = existing_rows[index].get("files") or []
+        resolved = await resolve_desired_files(
+            draft_record_id,
+            prev_files,
+            row["files"],
+            upload_pool,
+            prefix=f"row{index}",
+        )
+        stored_rows.append({
+            "nature_of_violation": row["nature_of_violation"],
+            "person_responsible": row["person_responsible"],
+            "files": resolved,
+        })
+
+    if upload_pool:
+        raise ValueError(
+            f"Unmapped uploaded file(s): {', '.join(sorted(upload_pool))}"
+        )
+    if orphaned_files:
+        await delete_compliance_files(orphaned_files)
+
+    person_details = {
+        "name": stored_rows[0]["person_responsible"],
+        "rows": stored_rows,
+    }
+
+    await db_manager.update(
+        COBCEDeclarations,
+        draft_record_id,
+        {
+            "Description": stored_rows[0]["nature_of_violation"],
+            "SubType": sub_type,
+            "PersonDetails": person_details,
+            "OverallStatus": "Draft",
+            "PendingAt": 0,
+        },
+    )
 
     if status == "draft":
-        if draft_record_id:
-            record = await db_manager.get(COBCEDeclarations, draft_record_id)
-            if not record:
-                raise ValueError("Declaration not found")
-            if record.CreatedBy != staff_id:
-                raise ValueError("Unauthorized")
-            if record.Status != "Draft":
-                raise ValueError("Only draft declarations can be edited")
-
-            await db_manager.update(
-                COBCEDeclarations,
-                draft_record_id,
-                {
-                    "Description": cobce_rows[0]["nature_of_violation"],
-                    "SubType": sub_type,
-                    "PersonDetails": {
-                        "name": cobce_rows[0]["person_responsible"],
-                        "rows": cobce_rows,
-                    },
-                    "OverallStatus": "Draft",
-                    "PendingAt": 0,
-                },
-            )
-        else:
-            draft_record_id = await next_self_decl_id(staff_id)
-            await db_manager.create(
-                COBCEDeclarations,
-                {
-                    "COBCEId": draft_record_id,
-                    "SubType": sub_type,
-                    "Description": cobce_rows[0]["nature_of_violation"],
-                    "PersonDetails": {
-                        "name": cobce_rows[0]["person_responsible"],
-                        "rows": cobce_rows,
-                    },
-                    "Status": "Draft",
-                    "CreatedOn": db_timestamp_now(),
-                    "CreatedBy": staff_id,
-                    "OverallStatus": "Draft",
-                    "PendingAt": 0,
-                    "ResponseJsonPath": None,
-                },
-            )
-
         return {
             "id": draft_record_id,
             "status": "Draft",
             "overall_status": "Draft",
             "declaration_type": "cobce",
-            "row_count": len(cobce_rows),
+            "row_count": len(stored_rows),
         }
 
     created_ids: list[str] = []
-    for index, row in enumerate(cobce_rows):
+    all_row_files: list[dict] = []
+    for row in stored_rows:
+        row_files = row.get("files") or []
+        all_row_files.extend(row_files)
         created_ids.append(
             await _submit_cobce_record(
                 staff_id,
                 sub_type,
                 row,
-                files,
-                attach_files=(index == 0),
+                row_files,
             )
         )
 
-    if draft_record_id:
-        draft = await db_manager.get(COBCEDeclarations, draft_record_id)
-        if draft and draft.Status == "Draft" and draft.CreatedBy == staff_id:
-            await db_manager.delete(COBCEDeclarations, draft_record_id)
+    if all_row_files:
+        await delete_compliance_files(all_row_files)
+
+    draft = await db_manager.get(COBCEDeclarations, draft_record_id)
+    if draft and draft.Status == "Draft" and draft.CreatedBy == staff_id:
+        await db_manager.delete(COBCEDeclarations, draft_record_id)
 
     if len(created_ids) == 1:
         return {
             "id": created_ids[0],
-            "status": "Completed",
-            "overall_status": "Completed",
+            "status": "Pending",
+            "overall_status": "Pending",
             "declaration_type": "cobce",
             "row_count": 1,
         }
 
     return {
         "ids": created_ids,
-        "status": "Completed",
-        "overall_status": "Completed",
+        "status": "Pending",
+        "overall_status": "Pending",
         "declaration_type": "cobce",
         "row_count": len(created_ids),
     }
@@ -261,28 +337,21 @@ async def _save_coi(
     form_data: dict,
     files: list[UploadFile],
 ) -> dict[str, Any]:
+    desired_files = parse_files_list(form_data.get("files")) if form_data else None
+    # Strip files before COI field validation.
+    form_fields = {k: v for k, v in (form_data or {}).items() if k != "files"}
+
     if status == "submit":
-        errors = _coi_validation_errors(sub_type, form_data)
+        errors = _coi_validation_errors(sub_type, form_fields)
         if errors:
             raise ValueError("; ".join(errors))
 
     is_new = False
+    existing_files: list = []
     if not record_id:
         record_id = await next_self_decl_id(staff_id)
         is_new = True
-
-    # Handle files for draft or submit
-    new_file_paths = []
-    if files:
-        new_file_paths = await upload_files(record_id, "user", files)
-
-    if new_file_paths:
-        existing_files = form_data.get("files") or []
-        if not isinstance(existing_files, list):
-            existing_files = []
-        form_data["files"] = existing_files + new_file_paths
-
-    if not is_new:
+    else:
         record = await db_manager.get(COIDeclarations, record_id)
         if not record:
             raise ValueError("Declaration not found")
@@ -290,12 +359,24 @@ async def _save_coi(
             raise ValueError("Unauthorized")
         if record.Status != "Draft":
             raise ValueError("Only draft declarations can be edited")
+        existing_files = (record.FormData or {}).get("files") or []
 
+    upload_pool = build_upload_pool(files)
+    stored = dict(form_fields)
+    stored["files"] = await resolve_desired_files(
+        record_id, existing_files, desired_files, upload_pool
+    )
+    if upload_pool:
+        raise ValueError(
+            f"Unmapped uploaded file(s): {', '.join(sorted(upload_pool))}"
+        )
+
+    if not is_new:
         await db_manager.update(
             COIDeclarations,
             record_id,
             {
-                "FormData": form_data,
+                "FormData": stored,
                 "SubType": sub_type,
                 "OverallStatus": "Draft",
                 "PendingAt": 0,
@@ -307,7 +388,7 @@ async def _save_coi(
             {
                 "COIId": record_id,
                 "SubType": sub_type,
-                "FormData": form_data,
+                "FormData": stored,
                 "Status": "Draft",
                 "CreatedOn": db_timestamp_now(),
                 "CreatedBy": staff_id,
@@ -327,7 +408,7 @@ async def _save_coi(
 
     record = await db_manager.get(COIDeclarations, record_id)
     now = now_ist()
-    
+
     json_data = {
         "id": record_id,
         "conversation": [
@@ -349,16 +430,16 @@ async def _save_coi(
         COIDeclarations,
         record_id,
         {
-            "Status": "Completed",
-            "PendingAt": 0,
-            "OverallStatus": "Completed",
+            "Status": "In-Progress",
+            "PendingAt": 1,
+            "OverallStatus": "Pending",
             "ResponseJsonPath": json_path,
         },
     )
     return {
         "id": record_id,
-        "status": "Completed",
-        "overall_status": "Completed",
+        "status": "Pending",
+        "overall_status": "Pending",
         "declaration_type": "coi",
     }
 
@@ -373,12 +454,14 @@ def _cobce_rows_from_record(record: COBCEDeclarations) -> list[dict]:
                 or row.get("description", ""),
                 "person_responsible": row.get("person_responsible")
                 or person_details.get("name", record.CreatedBy),
+                "files": row.get("files") or [],
             }
             for row in stored_rows
         ]
     return [{
         "nature_of_violation": record.Description or "",
         "person_responsible": person_details.get("name", record.CreatedBy),
+        "files": [],
     }]
 
 
@@ -464,5 +547,14 @@ async def get_self_declaration_by_id(
     if record_type == "coi" and data.get("formData") and "files" in data["formData"]:
         data["formData"] = dict(data["formData"])
         data["formData"]["files"] = await resolve_file_urls(data["formData"]["files"])
+
+    if record_type == "cobce" and data.get("rows"):
+        rows_out = []
+        for row in data["rows"]:
+            row_out = dict(row)
+            if row_out.get("files"):
+                row_out["files"] = await resolve_file_urls(row_out["files"])
+            rows_out.append(row_out)
+        data["rows"] = rows_out
 
     return data

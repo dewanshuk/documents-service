@@ -1,8 +1,10 @@
 import asyncio
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
 from fastapi.responses import StreamingResponse, JSONResponse
 from datetime import datetime
+import json
+from typing import List, Literal
 
 from db.db_manager import db_manager
 from db.models import AnnualDeclaration, DeclarationType, as_declaration_name
@@ -10,7 +12,6 @@ from db.validators import (
     AnnualDeclarationCreate,
     AnnualDeclarationUpdate,
     AnnualDeclarationFilters,
-    SaveDeclarationRequest,
 )
 from services.declaration_service import (
     save_user_declaration,
@@ -165,24 +166,43 @@ async def declaration_responses(
 @router.post("/save-declaration/{declaration_id}")
 async def save_declaration(
     declaration_id: str,
-    payload: SaveDeclarationRequest,
+    status: Literal["draft", "submit"] = Form(...),
+    responses: str = Form(
+        ...,
+        description=(
+            "JSON array of {question_id, response, declaration_details}. "
+            "Each detail row may include optional files: null | [] | [filenames]. "
+            "COBCE: max 5 rows; COI: max 1 row; 6 files per row. "
+            "Multipart upload filenames must appear in a detail row's files list."
+        ),
+    ),
+    files: List[UploadFile] = File(default=[]),
     current_user: dict = Depends(get_current_user),
 ):
-    """Unified save: status=draft (partial) or status=submit (all mandatory fields)."""
+    """Unified save: status=draft (partial) or status=submit (all mandatory fields).
+    Per-detail-row attachments via declaration_details[].files + multipart files.
+    """
     try:
-        responses = [r.model_dump() for r in payload.responses]
+        parsed_responses = json.loads(responses)
+        if not isinstance(parsed_responses, list):
+            raise ValueError("responses must be a JSON array")
+
+        upload_list = [f for f in files if f.filename]
         result = await save_user_declaration(
             declaration_id,
             current_user["staff_id"],
-            responses,
-            status=payload.status,
+            parsed_responses,
+            status=status,
+            uploads=upload_list,
         )
         message = (
             "Declaration submitted successfully"
-            if payload.status == "submit"
+            if status == "submit"
             else "Draft saved successfully"
         )
         return JSONResponse(content={"message": message, **result}, status_code=200)
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON: {e}") from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
