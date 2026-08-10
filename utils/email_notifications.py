@@ -310,19 +310,14 @@ async def notify_annual_declaration_users(
     declaration_name: str,
     financial_year: str,
     due_date: str,
+    staff_ids: list[str] | None = None,
 ) -> None:
-    try:
-        rows = await db_manager.raw(
-            """
-            SELECT uds.staff_id
-            FROM annual_declarations.user_declaration_status uds
-            WHERE uds.declaration_id = :did
-              AND uds.notify = true
-            """,
-            {"did": declaration_id},
-        )
+    """Email only the given staff_ids (new / newly activated assignees).
 
-        staff_ids = [r["staff_id"] for r in rows]
+    Callers must pass the list from process_declaration_excel so re-uploads
+    do not re-mail users who already had notify=true.
+    """
+    try:
         if not staff_ids:
             return
 

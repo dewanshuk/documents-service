@@ -14,6 +14,9 @@ from services.excel_service import _header_index_map
 
 BATCH_SIZE = 500
 
+# Never email users who already started or finished the declaration.
+_SKIP_EMAIL_STATUSES = frozenset({"draft", "completed"})
+
 _STATUS_DISPLAY = {
     "not_started": "Pending",
     "Pending": "Pending",
@@ -61,7 +64,13 @@ def _is_pending_row(row, status_col: int | None) -> bool:
 
 
 async def process_declaration_excel(declaration_id: str, file_bytes: bytes) -> dict:
-    """Parse Excel bytes and upsert UserDeclarationStatus rows (notify yes/no)."""
+    """Parse Excel bytes and upsert UserDeclarationStatus rows (notify yes/no).
+
+    Returns staff_ids_to_notify for users who should receive assignment email:
+    - brand-new rows with notify=true, or
+    - existing rows newly activated (notify false -> true),
+    excluding draft and completed statuses.
+    """
     col_map, data_rows = await asyncio.to_thread(_iter_excel_rows, file_bytes)
 
     staff_col = col_map.get("Staff ID")
@@ -102,6 +111,7 @@ async def process_declaration_excel(declaration_id: str, file_bytes: bytes) -> d
 
     processed = 0
     excluded = 0
+    staff_ids_to_notify: set[str] = set()
 
     for batch_start in range(0, len(pending_rows), BATCH_SIZE):
         batch = pending_rows[batch_start : batch_start + BATCH_SIZE]
@@ -135,8 +145,17 @@ async def process_declaration_excel(declaration_id: str, file_bytes: bytes) -> d
                 ).scalar_one_or_none()
 
                 if existing:
+                    prev_notify = bool(existing.notify)
+                    decl_status = (existing.status or "").strip().lower()
                     existing.notify = notify_val
                     existing.remarks = remarks_val or None
+                    # Newly activated (false -> true), never mail draft/completed.
+                    if (
+                        notify_val
+                        and not prev_notify
+                        and decl_status not in _SKIP_EMAIL_STATUSES
+                    ):
+                        staff_ids_to_notify.add(staff_id)
                 else:
                     session.add(
                         UserDeclarationStatus(
@@ -150,6 +169,9 @@ async def process_declaration_excel(declaration_id: str, file_bytes: bytes) -> d
                             remarks=remarks_val or None,
                         )
                     )
+                    # New row: email only when assigned (status is always not_started).
+                    if notify_val:
+                        staff_ids_to_notify.add(staff_id)
 
                 if notify_val:
                     processed += 1
@@ -159,6 +181,7 @@ async def process_declaration_excel(declaration_id: str, file_bytes: bytes) -> d
             await session.commit()
 
     # Delete not_started records for staff IDs no longer in the Excel.
+    # If they appear again later they are treated as new and may be emailed once.
     if excel_staff_ids:
         async with get_session() as session:
             await session.execute(
@@ -182,6 +205,8 @@ async def process_declaration_excel(declaration_id: str, file_bytes: bytes) -> d
         "sync_status": SyncStatus.COMPLETED.value,
         "processed": processed,
         "excluded_users": excluded,
+        "emails_queued": len(staff_ids_to_notify),
+        "staff_ids_to_notify": sorted(staff_ids_to_notify),
     }
 
 async def generate_declaration_status_excel(declaration_id: str) -> tuple[BytesIO, str]:

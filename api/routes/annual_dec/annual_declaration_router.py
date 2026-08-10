@@ -250,12 +250,16 @@ async def upload_declaration_file(
         )
         await invalidate_declarations_list_cache()
 
-        asyncio.create_task(notify_annual_declaration_users(
-            declaration_id=declaration_id,
-            declaration_name=declaration.declaration_name,
-            financial_year=declaration.financial_year,
-            due_date=str(declaration.due_date),
-        ))
+        # Email only new / newly activated assignees from this upload (not re-triggers).
+        staff_ids_to_notify = process_result.pop("staff_ids_to_notify", [])
+        if staff_ids_to_notify:
+            asyncio.create_task(notify_annual_declaration_users(
+                declaration_id=declaration_id,
+                declaration_name=declaration.declaration_name,
+                financial_year=declaration.financial_year,
+                due_date=str(declaration.due_date),
+                staff_ids=staff_ids_to_notify,
+            ))
 
         return JSONResponse(
             content={
