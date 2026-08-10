@@ -734,8 +734,7 @@ def _annual_where_clauses(
         clauses.append(UserDeclarationStatus.status != "completed")
         clauses.append(AnnualDeclaration.due_date >= today)
     else:
-        # All tab: completed records only — always own-scoped (including
-        # master admin / CCO).
+        # All tab: completed records only — always own-scoped.
         clauses.append(UserDeclarationStatus.status == "completed")
         clauses.append(UserDeclarationStatus.staff_id == staff_id)
 

@@ -40,7 +40,7 @@ async def raise_complaint(
             )
 
         try:
-            validate_word_limit(complaintDetails, 500)
+            validate_word_limit(complaintDetails, 5000)
         except ValueError as e:
             return log_and_json_response(
                 user["staff_id"],

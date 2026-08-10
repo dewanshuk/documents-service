@@ -134,6 +134,7 @@ async def get_conversation(
             "closureDate": format_datetime_ist(getattr(record, "ClosureDate", None)),
             "closedBy": closed_by,
             "closed_by_name": closed_by_name,
+            "closedRemarks": getattr(record, "ClosedRemarks", None),
             "workflowStatus": getattr(record, "Status", None),
         }
 
@@ -339,7 +340,7 @@ async def close_record(
         staff_id = user["staff_id"]
 
         try:
-            validate_word_limit(remarks, 500)
+            validate_word_limit(remarks, 2000)
         except ValueError as e:
             return log_and_json_response(
                 staff_id, {"record_id": record_id},
@@ -375,7 +376,7 @@ async def close_record(
         closure_date = db_timestamp_now()
         updates = {
             "OverallStatus": "Completed",
-            "PendingAt": 0,
+            "PendingAt": None,
             "LastUpdatedOn": closure_date,
         }
         if hasattr(record, "ClosureDate"):

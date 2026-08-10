@@ -185,7 +185,7 @@ async def submit_cobce(
             id,
             {
                 "Status": "Completed",
-                "PendingAt": 0,
+                "PendingAt": None,
                 "OverallStatus": "Completed",
                 "ResponseJsonPath": json_path,
             },

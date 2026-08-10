@@ -57,7 +57,7 @@ class ComplianceQuery(Base):
     CreatedBy: Mapped[str] = mapped_column(String(255), nullable=False)
 
     OverallStatus: Mapped[str] = mapped_column(String(50), nullable=False)
-    PendingAt: Mapped[int] = mapped_column(Integer, nullable=False)
+    PendingAt: Mapped[int | None] = mapped_column(Integer, nullable=True)
     AssignedTo: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     ResponseJsonPath: Mapped[str] = mapped_column(String(1000), nullable=False)
@@ -95,7 +95,7 @@ class GiftDeclarations(Base):
     CreatedBy: Mapped[str]
 
     OverallStatus: Mapped[str]
-    PendingAt: Mapped[int]
+    PendingAt: Mapped[int | None] = mapped_column(Integer, nullable=True)
     AssignedTo: Mapped[str | None] = mapped_column(String(255), nullable=True)
     ResponseJsonPath: Mapped[str]
 
@@ -112,13 +112,13 @@ class Complaints(Base):
 
     ComplaintId: Mapped[str] = mapped_column(String(80), primary_key=True)
     ComplaintType: Mapped[str]
-    ComplaintDetails: Mapped[str]
+    ComplaintDetails: Mapped[str] = mapped_column(String(5000), nullable=False)
 
     CreatedOn: Mapped[datetime]
     CreatedBy: Mapped[str]
 
     OverallStatus: Mapped[str]
-    PendingAt: Mapped[int]
+    PendingAt: Mapped[int | None] = mapped_column(Integer, nullable=True)
     AssignedTo: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     ResponseJsonPath: Mapped[str]

@@ -485,6 +485,7 @@ def _serialize_self_declaration_record(
             record.ClosureDate.isoformat() if record.ClosureDate else None
         ),
         "closedBy": record.ClosedBy,
+        "closedRemarks": getattr(record, "ClosedRemarks", None),
         "responseJsonPath": record.ResponseJsonPath,
     }
 

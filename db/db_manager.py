@@ -288,6 +288,10 @@ async def init_db(Base):
                 f"ALTER TABLE compliance.{tbl} "
                 "ADD COLUMN IF NOT EXISTS \"LastUpdatedOn\" TIMESTAMPTZ"
             ))
+            await conn.execute(text(
+                f'ALTER TABLE compliance.{tbl} '
+                'ALTER COLUMN "PendingAt" DROP NOT NULL'
+            ))
 
         await conn.execute(text(
             "ALTER TABLE compliance.gift_declarations "

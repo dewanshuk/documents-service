@@ -103,6 +103,7 @@ async def view_query(query_id: str, user: dict = Depends(get_current_user)):
                 "closureDate": str(record.ClosureDate) if record.ClosureDate else None,
                 "closedBy": getattr(record, "ClosedBy", None),
                 "closed_by_name": closed_by_name,
+                "closedRemarks": getattr(record, "ClosedRemarks", None),
                 "workflowStatus": getattr(record, "Status", None),
             },
             "conversation": data,
@@ -149,8 +150,8 @@ async def raise_query(
             )
 
         try:
-            validate_word_limit(title, 50)
-            validate_word_limit(description, 500)
+            validate_word_limit(title, 500)
+            validate_word_limit(description, 5000)
         except ValueError as e:
             return log_and_json_response(
                 user["staff_id"],
@@ -379,7 +380,7 @@ async def respond(
             )
 
         try:
-            validate_word_limit(message, 500)
+            validate_word_limit(message, 2000)
         except ValueError as e:
             return log_and_json_response(
                 user["staff_id"],
@@ -496,7 +497,7 @@ async def close_query(
             )
 
         try:
-            validate_word_limit(comment, 500)
+            validate_word_limit(comment, 2000)
         except ValueError as e:
             return log_and_json_response(
                 user["staff_id"],
@@ -531,7 +532,7 @@ async def close_query(
             query_id,
             {
                 "OverallStatus": "Closed",
-                "PendingAt": -1,
+                "PendingAt": None,
                 "ClosureDate": db_timestamp_now(),
                 "ClosedRemarks": comment,
             },

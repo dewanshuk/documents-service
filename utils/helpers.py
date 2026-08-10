@@ -88,10 +88,14 @@ def format_datetime_ist(value: Union[datetime, str, None]) -> str:
     ist_dt = value.astimezone(IST)
     return f"{datetimeformatter(ist_dt)} {ist_dt.strftime('%I:%M %p').lstrip('0')}"
 
-def validate_word_limit(text: str, max_words: int):
-    if len(text.split()) > max_words:
-        raise ValueError(f"Exceeds {max_words} words")
-    
+def validate_char_limit(text: str, max_chars: int):
+    if len(text) > max_chars:
+        raise ValueError(f"Exceeds {max_chars} characters")
+
+
+# Backwards-compatible alias
+validate_word_limit = validate_char_limit
+
 async def get_model_by_id(record_id: str):
     from utils.record_ids import resolve_record
 
