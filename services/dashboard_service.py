@@ -406,6 +406,7 @@ def _format_date(val) -> Optional[str]:
 def _finalize_item(item: dict, name_map: dict[str, str], admin_types: set[str]) -> dict:
     is_admin = item["type"] in admin_types
     staff_id = item.pop("_staff_id", None)
+    created_on_raw = item.pop("_created_on", None)
     updated_raw = item.pop("_updated_on", None)
     due_raw = item.pop("_response_due_raw", None)
     pending_at_raw = item.pop("_pending_at", None)
@@ -413,7 +414,7 @@ def _finalize_item(item: dict, name_map: dict[str, str], admin_types: set[str]) 
     closed_at_raw = item.pop("_closed_at", None)
     closed_by_raw = item.pop("_closed_by", None)
 
-    item["updated_on"] = _format_date(updated_raw)
+    item["updated_on"] = _format_date(created_on_raw or updated_raw)
     item["response_due_date"] = _format_date(due_raw)
     item["updated_by"] = _format_staff_display(staff_id, name_map)
 
@@ -612,6 +613,7 @@ def _format_helpdesk_record(config: TableConfig, rec) -> dict:
         "response_status": rs,
         "overall_status": overall,
         "_staff_id": rec.CreatedBy,
+        "_created_on": rec.CreatedOn,
         "_updated_on": updated_on,
         "_response_due_raw": due,
         "_pending_at": getattr(rec, "PendingAt", None),
@@ -815,6 +817,7 @@ def _format_annual_record(uds, decl) -> dict:
         "response_status": rs,
         "overall_status": overall,
         "_staff_id": uds.staff_id,
+        "_created_on": uds.created_at,
         "_updated_on": updated_on,
         "_response_due_raw": due_date,
         "_pending_at": None,
@@ -839,6 +842,7 @@ async def _collect_annual(
                 UserDeclarationStatus.declaration_id,
                 UserDeclarationStatus.staff_id,
                 UserDeclarationStatus.status,
+                UserDeclarationStatus.created_at,
                 UserDeclarationStatus.last_saved_at,
                 UserDeclarationStatus.submitted_at,
             ),

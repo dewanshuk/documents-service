@@ -6,6 +6,8 @@ from sqlalchemy import select, text, cast, String
 from sqlalchemy.sql import Select , and_, or_, func
 import os
 
+from utils.helpers import db_timestamp_now
+
 POSTGRES_USER = os.getenv("POSTGRES_USER", "authuser")
 POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "authpass")
 POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
@@ -70,6 +72,11 @@ def _attrs_from_names(model: Type[ModelType], columns: List[str]):
 
 class DBManager:
     async def create(self, model: Type[ModelType], data: Dict[str, Any]) -> ModelType:
+        if hasattr(model, "LastUpdatedOn") and "LastUpdatedOn" not in data:
+            data = {
+                **data,
+                "LastUpdatedOn": data.get("CreatedOn") or db_timestamp_now(),
+            }
         async with get_session() as session:
             obj = model(**data)
             session.add(obj)
@@ -222,6 +229,8 @@ class DBManager:
         obj_id: Any,
         updates: Dict[str, Any],
     ):
+        if hasattr(model, "LastUpdatedOn") and "LastUpdatedOn" not in updates:
+            updates = {**updates, "LastUpdatedOn": db_timestamp_now()}
         async with get_session() as session:
             db_obj = await session.get(model, obj_id)
             if not db_obj:
