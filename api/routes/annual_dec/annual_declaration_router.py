@@ -36,6 +36,7 @@ from storage.storage_ops import (
     upload_bytes,
     download_to_stream,
     ANNUAL_DECLARATION_BLOB_NAME,
+    validate_upload_files,
 )
 from utils.deps import get_current_user
 from utils.record_ids import next_annual_cycle_ref
@@ -217,6 +218,11 @@ async def upload_declaration_file(
         declaration = await db_manager.get(AnnualDeclaration, declaration_id)
         if not declaration:
             raise HTTPException(status_code=404, detail="Declaration not found")
+
+        try:
+            validate_upload_files([file])
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
         file_content = await file.read()
         try:

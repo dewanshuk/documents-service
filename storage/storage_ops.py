@@ -60,6 +60,82 @@ def _uri_to_blob(json_uri: str) -> tuple[str, str]:
 MAX_ATTACHMENT_FILES = 6
 MAX_COBCE_ROWS = 5
 
+# Extension -> accepted MIME types (must match client content_type).
+ALLOWED_UPLOAD_MIME_BY_EXT: dict[str, frozenset[str]] = {
+    ".pdf": frozenset({"application/pdf"}),
+    ".xlsx": frozenset(
+        {
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        }
+    ),
+    ".xls": frozenset({"application/vnd.ms-excel"}),
+    ".doc": frozenset({"application/msword"}),
+    ".docx": frozenset(
+        {
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        }
+    ),
+    ".pptx": frozenset(
+        {
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        }
+    ),
+    ".txt": frozenset({"text/plain"}),
+    ".csv": frozenset({"text/csv", "application/csv", "text/plain"}),
+    ".jpg": frozenset({"image/jpeg"}),
+    ".jpeg": frozenset({"image/jpeg"}),
+    ".png": frozenset({"image/png"}),
+    ".gif": frozenset({"image/gif"}),
+    ".webp": frozenset({"image/webp"}),
+    ".bmp": frozenset({"image/bmp", "image/x-ms-bmp"}),
+    ".tif": frozenset({"image/tiff"}),
+    ".tiff": frozenset({"image/tiff"}),
+    ".heic": frozenset({"image/heic", "image/heif"}),
+}
+
+
+def _normalize_content_type(content_type: str | None) -> str:
+    if not content_type:
+        return ""
+    return content_type.split(";", 1)[0].strip().lower()
+
+
+def validate_upload_files(files: list[UploadFile]) -> None:
+    """Reject uploads whose extension or MIME type is not allowed / mismatched.
+
+    Collects every invalid file and raises a single ValueError.
+    """
+    invalid: list[str] = []
+    for upload in files:
+        if not upload.filename:
+            continue
+        filename = Path(upload.filename).name
+        ext = Path(filename).suffix.lower()
+        mime = _normalize_content_type(upload.content_type)
+        reasons: list[str] = []
+
+        allowed_mimes = ALLOWED_UPLOAD_MIME_BY_EXT.get(ext)
+        if allowed_mimes is None:
+            shown_ext = ext or "(none)"
+            allowed_exts = ", ".join(sorted(ALLOWED_UPLOAD_MIME_BY_EXT))
+            reasons.append(
+                f"unsupported extension '{shown_ext}'. Allowed: {allowed_exts}"
+            )
+        elif not mime:
+            reasons.append("missing MIME type")
+        elif mime not in allowed_mimes:
+            expected = ", ".join(sorted(allowed_mimes))
+            reasons.append(
+                f"MIME type '{mime}' does not match extension '{ext}'. "
+                f"Expected: {expected}"
+            )
+
+        if reasons:
+            invalid.append(f"{filename} ({'; '.join(reasons)})")
+
+    if invalid:
+        raise ValueError(f"Invalid file(s): {'; '.join(invalid)}")
+
 
 def normalize_stored_files(entries: Optional[list]) -> list[dict[str, str]]:
     normalized: list[dict[str, str]] = []
@@ -77,6 +153,7 @@ def normalize_stored_files(entries: Optional[list]) -> list[dict[str, str]]:
 
 def build_upload_pool(files: list[UploadFile]) -> dict[str, UploadFile]:
     """Map upload filename -> UploadFile. Rejects duplicate upload names."""
+    validate_upload_files(files)
     pool: dict[str, UploadFile] = {}
     for upload in files:
         name = Path(upload.filename or "file").name
@@ -93,6 +170,7 @@ async def upload_files(
     *,
     prefix: str | None = None,
 ) -> list[dict[str, str]]:
+    validate_upload_files(files)
     container = await get_container_client(COMPLIANCE_CONTAINER)
     stored: list[dict[str, str]] = []
     for upload in files:
@@ -149,6 +227,8 @@ async def resolve_desired_files(
 
     desired_set = set(desired_names)
     to_delete = [item for item in existing if item["filename"] not in desired_set]
+    if to_upload:
+        validate_upload_files(to_upload)
     if to_delete:
         await delete_compliance_files(to_delete)
 

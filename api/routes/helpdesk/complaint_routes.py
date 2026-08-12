@@ -106,6 +106,15 @@ async def raise_complaint(
                 "complaint_id": complaint_id,
             },
         )
+    except ValueError as e:
+        return log_and_json_response(
+            user.get("staff_id"),
+            {"complaintType": complaintType.value, "complaintDetails": complaintDetails},
+            "/complaint",
+            "POST",
+            400,
+            {"error": str(e)},
+        )
     except Exception as e:
         return log_and_json_response(
             user.get("staff_id"),

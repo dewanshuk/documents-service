@@ -150,6 +150,21 @@ async def raise_gift(
                 "gift_id": gift_id,
             },
         )
+    except ValueError as e:
+        return log_and_json_response(
+            user.get("staff_id"),
+            {
+                "status": status,
+                "type": type.value,
+                "title": title,
+                "person": person,
+                "organization": organization,
+            },
+            "/gift",
+            "POST",
+            400,
+            {"error": str(e)},
+        )
     except Exception as e:
         return log_and_json_response(
             user.get("staff_id"),

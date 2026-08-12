@@ -312,6 +312,12 @@ async def respond_to_record(
             "/respond/{record_id}", "POST", 200,
             {"status": "Response added", "record_id": db_id},
         )
+    except ValueError as e:
+        return log_and_json_response(
+            user.get("staff_id"), {"record_id": record_id},
+            "/respond/{record_id}", "POST", 400,
+            {"error": str(e)},
+        )
     except Exception as e:
         return log_and_json_response(
             user.get("staff_id"), {"record_id": record_id},
@@ -389,20 +395,6 @@ async def close_record(
             updates["Status"] = "Completed"
 
         await db_manager.update(model, db_id, updates)
-
-        json_path = getattr(record, "ResponseJsonPath", None)
-        if json_path:
-            actor = "User" if is_owner else "Admin"
-            conv = await _load_conversation(json_path)
-            conv["conversation"].append({
-                "actor": actor,
-                "actorId": staff_id,
-                "actor_name": await format_actor_name(staff_id),
-                "dateTime": now_ist().isoformat(),
-                "message": remarks,
-                "files": [],
-            })
-            await _save_conversation(json_path, conv)
 
         title = getattr(record, "Title", getattr(record, "ComplaintType", getattr(record, "SubType", "")))
         asyncio.create_task(notify_record_closed(

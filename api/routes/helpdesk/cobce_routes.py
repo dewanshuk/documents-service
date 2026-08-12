@@ -203,6 +203,15 @@ async def submit_cobce(
             200,
             {"status": f"COBCE Declaration Submitted with id: {id}"},
         )
+    except ValueError as e:
+        return log_and_json_response(
+            user.get("staff_id"),
+            {"id": id},
+            "/cobce/{id}/submit",
+            "POST",
+            400,
+            {"error": str(e)},
+        )
     except Exception as e:
         return log_and_json_response(
             user.get("staff_id"),

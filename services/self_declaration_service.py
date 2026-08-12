@@ -22,7 +22,7 @@ from storage.storage_ops import (
     resolve_file_urls,
 )
 from utils.actor_display import format_actor_name, format_pending_at
-from utils.helpers import db_timestamp_now, now_ist
+from utils.helpers import db_timestamp_now, format_datetime_ist, now_ist
 from utils.record_ids import next_self_decl_id, resolve_record
 
 SELF_DECLARATION_TYPES = frozenset({"cobce", "coi"})
@@ -478,12 +478,8 @@ def _serialize_self_declaration_record(
         "overallStatus": record.OverallStatus,
         "pendingAt": record.PendingAt,
         "createdBy": record.CreatedBy,
-        "createdOn": (
-            record.CreatedOn.isoformat() if record.CreatedOn else None
-        ),
-        "closureDate": (
-            record.ClosureDate.isoformat() if record.ClosureDate else None
-        ),
+        "createdOn": format_datetime_ist(record.CreatedOn),
+        "closureDate": format_datetime_ist(record.ClosureDate),
         "closedBy": record.ClosedBy,
         "closedRemarks": getattr(record, "ClosedRemarks", None),
         "responseJsonPath": record.ResponseJsonPath,
@@ -542,6 +538,7 @@ async def get_self_declaration_by_id(
             data["conversation"] = await load_json(record.ResponseJsonPath)
             for entry in data["conversation"].get("conversation", []) or []:
                 entry["files"] = await resolve_file_urls(entry.get("files"))
+                entry["dateTime"] = format_datetime_ist(entry.get("dateTime"))
         except Exception:
             data["conversation"] = None
 

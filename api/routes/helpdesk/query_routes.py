@@ -219,6 +219,15 @@ async def raise_query(
                 "query_id": query_id,
             },
         )
+    except ValueError as e:
+        return log_and_json_response(
+            user.get("staff_id"),
+            {"title": title, "description": description},
+            "/query",
+            "POST",
+            400,
+            {"error": str(e)},
+        )
     except Exception as e:
         return log_and_json_response(
             user.get("staff_id"),
@@ -433,6 +442,15 @@ async def respond(
                 "nextPending": "Compliance Team" if next_pending == 1 else "User",
             },
         )
+    except ValueError as e:
+        return log_and_json_response(
+            user.get("staff_id"),
+            {"query_id": query_id},
+            "/query/{query_id}/respond",
+            "POST",
+            400,
+            {"error": str(e)},
+        )
     except Exception as e:
         return log_and_json_response(
             user.get("staff_id"),
@@ -508,25 +526,6 @@ async def close_query(
                 {"error": str(e)},
             )
 
-        actor = "User" if is_owner else "Compliance Team"
-        entry = {
-            "actor": actor,
-            "actorId": user["staff_id"],
-            "actor_name": await format_actor_name(user["staff_id"]),
-            "dateTime": now_ist().isoformat(),
-            "data": {"comment": comment},
-            "files": [],
-        }
-        if not record.ResponseJsonPath:
-            return log_and_json_response(
-                user["staff_id"],
-                {"query_id": query_id, "comment": comment},
-                "/query/{query_id}/close",
-                "POST",
-                400,
-                {"error": "No conversation available"},
-            )
-        await append_json(record.ResponseJsonPath, entry)
         await db_manager.update(
             model,
             query_id,
