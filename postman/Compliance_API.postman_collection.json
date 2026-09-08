@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     "name": "Compliance Helpdesk + Annual Declarations",
-    "description": "Import this collection AND the matching environment.\n\nSetup:\n1. Set `base_url` (e.g. http://localhost:8000)\n2. Set `auth_token` (token only; Bearer is added automatically)\n3. Fill `declaration_id` and `assign_staff_id`\n4. If file fields are empty after import, attach postman/fixtures/sample.txt or sample_declaration.xlsx\n\nPrefilled: query_id=QRY-kpmg_nthompson-000022, record_id=CMP-kpmg_ktalwar-000011",
+    "description": "Import this collection AND the matching environment.\n\nSetup:\n1. Set `base_url` (e.g. http://localhost:8000)\n2. Set `auth_token` (token only; Bearer is added automatically)\n3. Fill `declaration_id` and `assign_staff_id`\n4. If file fields are empty after import, attach postman/fixtures/sample.txt or sample_declaration.xlsx\n\nPrefilled: query_id=QRY-kpmg_nthompson-000022, record_id=QRY-kpmg_nthompson-000022",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -20,7 +20,7 @@
     },
     {
       "key": "record_id",
-      "value": "CMP-kpmg_ktalwar-000011"
+      "value": "QRY-kpmg_nthompson-000022"
     },
     {
       "key": "declaration_id",
@@ -118,7 +118,7 @@
                 },
                 {
                   "key": "type",
-                  "value": "query,gift,complaint",
+                  "value": "query,self_declarations",
                   "disabled": true
                 },
                 {
@@ -226,7 +226,7 @@
                 },
                 {
                   "key": "type",
-                  "value": "query,gift",
+                  "value": "query,self_declarations",
                   "disabled": true
                 }
               ]
@@ -464,145 +464,6 @@
                   "key": "comment",
                   "value": "Closing this query via Postman dummy payload.",
                   "type": "text"
-                }
-              ]
-            }
-          },
-          "response": []
-        }
-      ]
-    },
-    {
-      "name": "Complaint",
-      "item": [
-        {
-          "name": "Raise Complaint",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{auth_token}}",
-                "type": "text"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/compliance/complaint",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "compliance",
-                "complaint"
-              ]
-            },
-            "description": "Creates complaint. Copy complaint_id into record_id if needed.",
-            "body": {
-              "mode": "formdata",
-              "formdata": [
-                {
-                  "key": "complaintType",
-                  "value": "Other",
-                  "type": "text",
-                  "description": "COBCE | COI | ComplyShield | Gift | Other"
-                },
-                {
-                  "key": "complaintDetails",
-                  "value": "Dummy complaint details submitted from Postman collection.",
-                  "type": "text"
-                },
-                {
-                  "key": "files",
-                  "type": "file",
-                  "src": "fixtures/sample.txt"
-                }
-              ]
-            }
-          },
-          "response": []
-        }
-      ]
-    },
-    {
-      "name": "Gift",
-      "item": [
-        {
-          "name": "Raise Gift Declaration",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{auth_token}}",
-                "type": "text"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/compliance/gift",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "compliance",
-                "gift"
-              ]
-            },
-            "description": "",
-            "body": {
-              "mode": "formdata",
-              "formdata": [
-                {
-                  "key": "status",
-                  "value": "Submitted",
-                  "type": "text"
-                },
-                {
-                  "key": "type",
-                  "value": "TO_BE_GIVEN",
-                  "type": "text",
-                  "description": "TO_BE_GIVEN | ALREADY_GIVEN | TO_BE_RECEIVED | ALREADY_RECEIVED"
-                },
-                {
-                  "key": "title",
-                  "value": "Dummy gift declaration",
-                  "type": "text"
-                },
-                {
-                  "key": "description",
-                  "value": "Dummy gift description for Postman testing.",
-                  "type": "text"
-                },
-                {
-                  "key": "person",
-                  "value": "Jane Doe",
-                  "type": "text"
-                },
-                {
-                  "key": "organization",
-                  "value": "Acme Corp",
-                  "type": "text"
-                },
-                {
-                  "key": "approxValueINR",
-                  "value": "2500",
-                  "type": "text"
-                },
-                {
-                  "key": "portalApprovalTaken",
-                  "value": "yes",
-                  "type": "text"
-                },
-                {
-                  "key": "portalNumber",
-                  "value": "PORTAL-12345",
-                  "type": "text"
-                },
-                {
-                  "key": "files",
-                  "type": "file",
-                  "src": "fixtures/sample.txt"
                 }
               ]
             }
@@ -1003,7 +864,7 @@
                 }
               ]
             },
-            "description": "type: Gift Declaration | Complaint | Query | Annual Declaration | Self Declaration"
+            "description": "type: Query | Annual Declaration | Self Declaration"
           },
           "response": []
         },

@@ -12,8 +12,6 @@ TYPE_FILTER_MAP = {
     "annual_declarations": "Annual Declaration",
     "self_declarations": "Self Declaration",
     "query": "Query",
-    "gift": "Gift Declaration",
-    "complaint": "Complaint",
 }
 
 EXPORT_COLUMNS = [
@@ -31,8 +29,6 @@ EXPORT_COLUMNS = [
 ]
 
 RECORD_TYPE_LEAD_MAP = {
-    "gift declaration": "is_cobce_coi_gift_lead",
-    "complaint": "is_complaint_lead",
     "query": "is_query_lead",
     "annual declaration": "is_knowledge_hub_admin",
     "self declaration": "is_cobce_coi_gift_lead",

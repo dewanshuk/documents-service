@@ -35,8 +35,8 @@ async def dashboard(
 
     - tab=pending: items that need action (non-completed)
     - tab=all: all items including completed
-    - type: comma-separated filter, e.g. type=query,gift,complaint
-      Allowed values: annual_declarations, self_declarations, query, gift, complaint
+    - type: comma-separated filter, e.g. type=query,self_declarations
+      Allowed values: annual_declarations, self_declarations, query
     - Admin sees all records; regular user sees only their own.
     """
     try:
@@ -103,7 +103,7 @@ async def export_dashboard(
 ):
     """
     Export dashboard records to xlsx using the same role-scoped filters as /dashboard.
-    Supports comma-separated type filter, e.g. type=query,gift
+    Supports comma-separated type filter, e.g. type=query,self_declarations
     """
     try:
         staff_id = user["staff_id"]

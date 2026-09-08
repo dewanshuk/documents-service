@@ -9,7 +9,6 @@ from utils.deps import get_current_user
 from utils.record_ids import resolve_record
 from utils.authorize import (
     is_active_cobce_coi_gift_lead,
-    is_active_complaint_lead,
     is_active_query_lead,
     is_lead_for_type,
 )
@@ -25,8 +24,6 @@ router = APIRouter(tags=[TAG_ADMINS])
 
 ADMIN_ROLE_CHECKERS = {
     "query": is_active_query_lead,
-    "gift": is_active_cobce_coi_gift_lead,
-    "complaint": is_active_complaint_lead,
     "cobce": is_active_cobce_coi_gift_lead,
     "coi": is_active_cobce_coi_gift_lead,
 }
@@ -43,7 +40,7 @@ async def get_admins(
     """
     Get admins (leads) for a given record type with fuzzy search on username.
 
-    Accepts type param: Gift Declaration, Complaint, Query, Annual Declaration, Self Declaration
+    Accepts type param: Query, Annual Declaration, Self Declaration
     """
     try:
         lead_col_name = RECORD_TYPE_LEAD_MAP.get(record_type.strip().lower())
@@ -180,7 +177,7 @@ async def assign_admin(
 
         await db_manager.update(model, db_id, {"AssignedTo": staff_id})
 
-        title = getattr(record, "Title", getattr(record, "ComplaintType", getattr(record, "SubType", "")))
+        title = getattr(record, "Title", getattr(record, "SubType", ""))
         asyncio.create_task(notify_record_assigned(
             record_type, db_id, staff_id, caller_id, created_by,
             title=title,

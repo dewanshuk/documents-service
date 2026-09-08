@@ -1,7 +1,5 @@
 from fastapi import APIRouter
 from .query_routes import router as query_router
-from .gift_routes import router as gift_router
-from .complaint_routes import router as complaint_router
 from .self_declaration_routes import router as self_declaration_router
 from .generic_routes import router as generic_router
 from .respond_routes import router as respond_router
@@ -17,7 +15,5 @@ router.include_router(dashboard_router)
 router.include_router(generic_router)
 router.include_router(respond_router)
 router.include_router(query_router)
-router.include_router(complaint_router)
-router.include_router(gift_router)
 router.include_router(self_declaration_router)
 router.include_router(admin_router)

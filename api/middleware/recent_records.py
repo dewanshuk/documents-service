@@ -19,7 +19,7 @@ ANNUAL_SAVE_PATTERN = re.compile(
 )
 
 # Routes where the record id is already part of the URL: viewing or responding
-# to an existing query/complaint/gift/self-declaration.
+# to an existing query/self-declaration.
 HELPDESK_ID_IN_URL_PATTERNS = [
     ("GET", re.compile(r"^/api/compliance/query/([^/]+)$")),
     ("POST", re.compile(r"^/api/compliance/query/([^/]+)/respond$")),
@@ -30,8 +30,6 @@ HELPDESK_ID_IN_URL_PATTERNS = [
 # runs, so it's read from the JSON response body instead of the URL.
 HELPDESK_CREATE_PATTERNS = [
     ("POST", re.compile(r"^/api/compliance/query$"), "query_id"),
-    ("POST", re.compile(r"^/api/compliance/complaint$"), "complaint_id"),
-    ("POST", re.compile(r"^/api/compliance/gift$"), "gift_id"),
     ("POST", re.compile(r"^/api/compliance/self-declaration$"), "id"),
 ]
 
@@ -64,15 +62,6 @@ async def _log_helpdesk_record(staff_id: str, record_id: str) -> None:
         record_type = "Query"
         title = getattr(record, "Title", "Query")
         sub_type = getattr(record, "QueryType", None)
-    elif hasattr(record, "ComplaintId"):
-        record_type = "Complaint"
-        details = getattr(record, "ComplaintDetails", "")
-        title = (details[:50] + "...") if details else "Complaint"
-        sub_type = getattr(record, "ComplaintType", None)
-    elif hasattr(record, "GiftId"):
-        record_type = "Gift Declaration"
-        title = f"Gift - {getattr(record, 'Person', '')}"
-        sub_type = "Gift"
     elif hasattr(record, "COBCEId"):
         record_type = "Self Declaration"
         description = getattr(record, "Description", "")

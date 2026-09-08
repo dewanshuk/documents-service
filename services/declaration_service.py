@@ -7,7 +7,7 @@ from io import BytesIO
 from uuid import UUID
 
 from openpyxl import Workbook
-from sqlalchemy import select, and_, cast, String, func, delete
+from sqlalchemy import select, and_, cast, String, func, delete, case
 from sqlalchemy.orm import selectinload
 
 from db.db_manager import get_session
@@ -328,25 +328,48 @@ async def save_user_declaration(
 async def get_user_declaration_status(staff_id: str) -> dict:
     today = date.today()
     async with get_session() as session:
+        # Prefer non-completed (nearest due), else fall back to completed.
         stmt = (
             select(UserDeclarationStatus, AnnualDeclaration)
-            .join(AnnualDeclaration, UserDeclarationStatus.declaration_id == AnnualDeclaration.id)
+            .join(
+                AnnualDeclaration,
+                UserDeclarationStatus.declaration_id == AnnualDeclaration.id,
+            )
             .where(
                 UserDeclarationStatus.staff_id == staff_id,
                 UserDeclarationStatus.notify.is_(True),
-                UserDeclarationStatus.status != "completed"
             )
-            .order_by(AnnualDeclaration.due_date.asc())
+            .order_by(
+                case(
+                    (UserDeclarationStatus.status == "completed", 1),
+                    else_=0,
+                ),
+                AnnualDeclaration.due_date.asc(),
+            )
             .limit(1)
         )
         row = (await session.execute(stmt)).first()
 
         if not row:
-            return {"applicable": False}
+            return {"applicable": False, "completed": False}
 
         uds, decl = row
-        due_date = decl.due_date
+        user_status_id = uds.id or f"AD-{staff_id}-{decl.id}"
+        is_completed = uds.status == "completed"
 
+        if is_completed:
+            return {
+                "applicable": False,
+                "completed": True,
+                "annual_declaration_id": decl.id,
+                "user_annual_declaration_id": user_status_id,
+                "user_id": staff_id,
+                "message": None,
+                "overdue": False,
+                "days": None,
+            }
+
+        due_date = decl.due_date
         if due_date < today:
             days = (today - due_date).days
             message = f"OVERDUE FOR {days:02d} DAYS"
@@ -358,12 +381,13 @@ async def get_user_declaration_status(staff_id: str) -> dict:
 
         return {
             "applicable": True,
+            "completed": False,
             "message": message,
             "overdue": overdue,
             "annual_declaration_id": decl.id,
-            "user_annual_declaration_id": uds.id or f"AD-{staff_id}-{decl.id}",
+            "user_annual_declaration_id": user_status_id,
             "user_id": staff_id,
-            "days": days
+            "days": days,
         }
 
 

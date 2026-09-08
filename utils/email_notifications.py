@@ -23,16 +23,12 @@ from utils.email_templates import (
 
 RECORD_TYPE_LABELS = {
     "query": "Query",
-    "complaint": "Complaint",
-    "gift": "Gift Declaration",
     "cobce": "Self Declaration (COBCE)",
     "coi": "Self Declaration (COI)",
 }
 
 LEAD_FLAG_FOR_TYPE = {
     "query": "is_query_lead",
-    "complaint": "is_complaint_lead",
-    "gift": "is_cobce_coi_gift_lead",
     "cobce": "is_cobce_coi_gift_lead",
     "coi": "is_cobce_coi_gift_lead",
 }

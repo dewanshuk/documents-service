@@ -6,17 +6,13 @@ from sqlalchemy import text
 
 from db.db_manager import get_session
 from db.models.helpdesk import (
-    Complaints,
     ComplianceQuery,
-    GiftDeclarations,
     COBCEDeclarations,
     COIDeclarations,
 )
 
 MODEL_BY_TYPE = {
     "query": ComplianceQuery,
-    "gift": GiftDeclarations,
-    "complaint": Complaints,
     "cobce": COBCEDeclarations,
     "coi": COIDeclarations,
 }
@@ -84,16 +80,6 @@ async def next_query_id(staff_id: str, year: int | None = None) -> str:
     return f"QRY{staff_id}-{seq:06d}"
 
 
-async def next_complaint_id(staff_id: str, year: int | None = None) -> str:
-    year = year or current_year()
-    seq = await _next_sequence_value("compliance", f"seq_cmp_{year}")
-    return f"CMP{staff_id}-{seq:06d}"
-
-
-async def next_gift_id(staff_id: str, year: int | None = None) -> str:
-    year = year or current_year()
-    seq = await _next_sequence_value("compliance", f"seq_gft_{year}")
-    return f"GFT{staff_id}-{seq:06d}"
 async def next_self_decl_id(staff_id: str, year: int | None = None) -> str:
     year = year or current_year()
     seq = await _next_sequence_value("compliance", f"seq_sd_{year}")
@@ -123,16 +109,6 @@ async def resolve_record(record_id: str) -> tuple[type, str, str]:
         record = await db_manager.get(ComplianceQuery, record_id)
         if record:
             return ComplianceQuery, "query", record_id
-
-    if record_id.startswith("CMP"):
-        record = await db_manager.get(Complaints, record_id)
-        if record:
-            return Complaints, "complaint", record_id
-
-    if record_id.startswith("GFT"):
-        record = await db_manager.get(GiftDeclarations, record_id)
-        if record:
-            return GiftDeclarations, "gift", record_id
 
     if _is_annual_user_status_id(record_id):
         record = await db_manager.get(UserDeclarationStatus, record_id)

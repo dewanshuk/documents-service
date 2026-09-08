@@ -17,8 +17,6 @@ from core.constants import (
 from db.db_manager import get_session
 from db.models.helpdesk import (
     ComplianceQuery,
-    GiftDeclarations,
-    Complaints,
     COBCEDeclarations,
     COIDeclarations,
 )
@@ -59,22 +57,6 @@ HELPDESK_CONFIGS = [
         pk_field="QueryId",
         search_fields=("QueryId", "Title", "Description"),
         sub_type_field="QueryType",
-        updated_field="LastUpdatedOn",
-    ),
-    TableConfig(
-        model=Complaints,
-        type_label="Complaint",
-        pk_field="ComplaintId",
-        search_fields=("ComplaintId", "ComplaintDetails"),
-        sub_type_field="ComplaintType",
-        updated_field="LastUpdatedOn",
-    ),
-    TableConfig(
-        model=GiftDeclarations,
-        type_label="Gift Declaration",
-        pk_field="GiftId",
-        search_fields=("GiftId", "Person", "Title", "Description"),
-        sub_type_value="Gift",
         updated_field="LastUpdatedOn",
     ),
     TableConfig(
@@ -952,8 +934,6 @@ def _build_summary(active_configs: list[TableConfig], include_annual: bool, coun
         "annual_declarations": type_totals.get("Annual Declaration", 0),
         "self_declarations": type_totals.get("Self Declaration", 0),
         "queries": type_totals.get("Query", 0),
-        "complaints": type_totals.get("Complaint", 0),
-        "gifts": type_totals.get("Gift Declaration", 0),
     }
 
     if tab == "all":

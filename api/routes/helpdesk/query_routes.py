@@ -68,10 +68,6 @@ async def view_query(query_id: str, user: dict = Depends(get_current_user)):
 
         if hasattr(record, "QueryId"):
             record_id = record.QueryId
-        elif hasattr(record, "GiftId"):
-            record_id = record.GiftId
-        elif hasattr(record, "ComplaintId"):
-            record_id = record.ComplaintId
         elif hasattr(record, "COBCEId"):
             record_id = record.COBCEId
         elif hasattr(record, "COIId"):
@@ -424,7 +420,7 @@ async def respond(
 
         await db_manager.update(model, query_id, {"PendingAt": next_pending})
 
-        title = getattr(record, "Title", getattr(record, "ComplaintDetails", getattr(record, "Person", getattr(record, "SubType", ""))))
+        title = getattr(record, "Title", getattr(record, "SubType", ""))
         asyncio.create_task(notify_record_responded(
             record_type, query_id, user["staff_id"], record.CreatedBy,
             title=title,
@@ -537,7 +533,7 @@ async def close_query(
             },
         )
 
-        title = getattr(record, "Title", getattr(record, "ComplaintDetails", getattr(record, "Person", getattr(record, "SubType", ""))))
+        title = getattr(record, "Title", getattr(record, "SubType", ""))
         asyncio.create_task(notify_record_closed(
             record_type, query_id, user["staff_id"], record.CreatedBy,
             title=title,

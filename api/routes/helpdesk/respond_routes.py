@@ -19,16 +19,12 @@ router = APIRouter(tags=[TAG_COMMON])
 
 CREATED_BY_FIELD = {
     "query": "CreatedBy",
-    "gift": "CreatedBy",
-    "complaint": "CreatedBy",
     "cobce": "CreatedBy",
     "coi": "CreatedBy",
 }
 
 RECORD_TYPE_DISPLAY = {
     "query": "Query",
-    "gift": "Gift",
-    "complaint": "Complaint",
     "cobce": "COBCE",
     "coi": "COI",
 }
@@ -89,10 +85,6 @@ async def get_conversation(
 
         if hasattr(record, "QueryId"):
             record_id_val = record.QueryId
-        elif hasattr(record, "GiftId"):
-            record_id_val = record.GiftId
-        elif hasattr(record, "ComplaintId"):
-            record_id_val = record.ComplaintId
         elif hasattr(record, "COBCEId"):
             record_id_val = record.COBCEId
         elif hasattr(record, "COIId"):
@@ -300,7 +292,7 @@ async def respond_to_record(
             "LastUpdatedOn": db_timestamp_now(),
         })
 
-        title = getattr(record, "Title", getattr(record, "ComplaintType", getattr(record, "SubType", "")))
+        title = getattr(record, "Title", getattr(record, "SubType", ""))
         asyncio.create_task(notify_record_responded(
             record_type, db_id, staff_id, created_by,
             title=title,
@@ -396,7 +388,7 @@ async def close_record(
 
         await db_manager.update(model, db_id, updates)
 
-        title = getattr(record, "Title", getattr(record, "ComplaintType", getattr(record, "SubType", "")))
+        title = getattr(record, "Title", getattr(record, "SubType", ""))
         asyncio.create_task(notify_record_closed(
             record_type, db_id, staff_id, created_by or "",
             title=title,

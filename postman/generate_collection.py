@@ -90,7 +90,7 @@ def build():
                 {"key": "tab", "value": "pending"},
                 {"key": "page", "value": "1"},
                 {"key": "page_size", "value": "10"},
-                {"key": "type", "value": "query,gift,complaint", "disabled": True},
+                {"key": "type", "value": "query,self_declarations", "disabled": True},
                 {"key": "search", "value": "", "disabled": True},
                 {"key": "sub_type", "value": "", "disabled": True},
                 {"key": "response_status", "value": "", "disabled": True},
@@ -115,7 +115,7 @@ def build():
             "/api/compliance/dashboard/export",
             query=[
                 {"key": "tab", "value": "pending"},
-                {"key": "type", "value": "query,gift", "disabled": True},
+                {"key": "type", "value": "query,self_declarations", "disabled": True},
             ],
             desc="Downloads xlsx",
         ),
@@ -186,58 +186,6 @@ def build():
                         "key": "comment",
                         "value": "Closing this query via Postman dummy payload.",
                     }
-                ]
-            ),
-        ),
-    ]
-
-    complaint = [
-        req(
-            "Raise Complaint",
-            "POST",
-            "/api/compliance/complaint",
-            body=form_body(
-                [
-                    {
-                        "key": "complaintType",
-                        "value": "Other",
-                        "description": "COBCE | COI | ComplyShield | Gift | Other",
-                    },
-                    {
-                        "key": "complaintDetails",
-                        "value": "Dummy complaint details submitted from Postman collection.",
-                    },
-                    {"key": "files", "type": "file", "src": "fixtures/sample.txt"},
-                ]
-            ),
-            desc="Creates complaint. Copy complaint_id into record_id if needed.",
-        ),
-    ]
-
-    gift = [
-        req(
-            "Raise Gift Declaration",
-            "POST",
-            "/api/compliance/gift",
-            body=form_body(
-                [
-                    {"key": "status", "value": "Submitted"},
-                    {
-                        "key": "type",
-                        "value": "TO_BE_GIVEN",
-                        "description": "TO_BE_GIVEN | ALREADY_GIVEN | TO_BE_RECEIVED | ALREADY_RECEIVED",
-                    },
-                    {"key": "title", "value": "Dummy gift declaration"},
-                    {
-                        "key": "description",
-                        "value": "Dummy gift description for Postman testing.",
-                    },
-                    {"key": "person", "value": "Jane Doe"},
-                    {"key": "organization", "value": "Acme Corp"},
-                    {"key": "approxValueINR", "value": "2500"},
-                    {"key": "portalApprovalTaken", "value": "yes"},
-                    {"key": "portalNumber", "value": "PORTAL-12345"},
-                    {"key": "files", "type": "file", "src": "fixtures/sample.txt"},
                 ]
             ),
         ),
@@ -381,7 +329,7 @@ def build():
                 {"key": "page", "value": "1"},
                 {"key": "page_size", "value": "10"},
             ],
-            desc="type: Gift Declaration | Complaint | Query | Annual Declaration | Self Declaration",
+            desc="type: Query | Annual Declaration | Self Declaration",
         ),
         req(
             "Assign Admin",
@@ -570,7 +518,7 @@ def build():
                 "4. If file fields are empty after import, attach "
                 "postman/fixtures/sample.txt or sample_declaration.xlsx\n\n"
                 "Prefilled: query_id=QRY-kpmg_nthompson-000022, "
-                "record_id=CMP-kpmg_ktalwar-000011"
+                "record_id=QRY-kpmg_nthompson-000022"
             ),
             "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
         },
@@ -578,7 +526,7 @@ def build():
             {"key": "base_url", "value": "http://localhost:8000"},
             {"key": "auth_token", "value": ""},
             {"key": "query_id", "value": "QRY-kpmg_nthompson-000022"},
-            {"key": "record_id", "value": "CMP-kpmg_ktalwar-000011"},
+            {"key": "record_id", "value": "QRY-kpmg_nthompson-000022"},
             {"key": "declaration_id", "value": ""},
             {"key": "assign_staff_id", "value": ""},
             {"key": "self_declaration_id", "value": ""},
@@ -596,8 +544,6 @@ def build():
             {"name": "Dashboard", "item": dashboard},
             {"name": "Recent Activity", "item": recent},
             {"name": "Query", "item": query},
-            {"name": "Complaint", "item": complaint},
-            {"name": "Gift", "item": gift},
             {"name": "Self Declaration", "item": self_decl},
             {"name": "Respond / Close / Conversation", "item": respond},
             {"name": "Admin", "item": admin},
@@ -630,7 +576,7 @@ def build():
             },
             {
                 "key": "record_id",
-                "value": "CMP-kpmg_ktalwar-000011",
+                "value": "QRY-kpmg_nthompson-000022",
                 "type": "default",
                 "enabled": True,
             },

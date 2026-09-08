@@ -273,10 +273,31 @@ async def init_db(Base):
         await conn.execute(text("CREATE SCHEMA IF NOT EXISTS users"))
         await conn.execute(text("CREATE SCHEMA IF NOT EXISTS annual_declarations"))
         await conn.execute(text("CREATE SCHEMA IF NOT EXISTS compliance"))
+
+        await conn.execute(text("DROP TABLE IF EXISTS compliance.gift_declarations"))
+        await conn.execute(text("DROP TABLE IF EXISTS compliance.complaints"))
+        await conn.execute(text(
+            "ALTER TABLE IF EXISTS users.users "
+            "DROP COLUMN IF EXISTS is_complaint_lead"
+        ))
+        await conn.execute(text(
+            """
+            DO $$
+            DECLARE r RECORD;
+            BEGIN
+              FOR r IN
+                SELECT sequencename FROM pg_sequences
+                WHERE schemaname = 'compliance'
+                  AND (sequencename LIKE 'seq_cmp_%' OR sequencename LIKE 'seq_gft_%')
+              LOOP
+                EXECUTE format('DROP SEQUENCE IF EXISTS compliance.%I', r.sequencename);
+              END LOOP;
+            END $$;
+            """
+        ))
+
         helpdesk_tables = [
             "compliance_queries",
-            "gift_declarations",
-            "complaints",
             "cobce_declarations",
             "coi_declarations",
         ]
@@ -303,26 +324,25 @@ async def init_db(Base):
             ))
 
         await conn.execute(text(
-            "ALTER TABLE compliance.gift_declarations "
-            "ADD COLUMN IF NOT EXISTS \"Type\" VARCHAR(50) "
-            "NOT NULL DEFAULT 'TO_BE_GIVEN'"
-        ))
-
-        await conn.execute(text(
-            "ALTER TABLE compliance.gift_declarations "
-            "ADD COLUMN IF NOT EXISTS \"Title\" VARCHAR(500) "
-            "NOT NULL DEFAULT ''"
-        ))
-        await conn.execute(text(
-            "ALTER TABLE compliance.gift_declarations "
-            "ADD COLUMN IF NOT EXISTS \"Description\" VARCHAR(5000) "
-            "NOT NULL DEFAULT ''"
-        ))
-
-        await conn.execute(text(
             "ALTER TABLE annual_declarations.user_declaration_status "
             "ADD COLUMN IF NOT EXISTS remarks TEXT"
         ))
 
         await conn.execute(text("SET search_path TO compliance, public;"))
         await conn.run_sync(Base.metadata.create_all)
+
+        await conn.execute(text(
+            """
+            DO $$
+            BEGIN
+              IF EXISTS (
+                SELECT 1 FROM information_schema.tables
+                WHERE table_schema = 'compliance'
+                  AND table_name = 'recent_user_records'
+              ) THEN
+                DELETE FROM compliance.recent_user_records
+                WHERE record_type IN ('Gift Declaration', 'Complaint');
+              END IF;
+            END $$;
+            """
+        ))

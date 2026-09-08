@@ -29,9 +29,6 @@ class User(BaseUsers):
     is_cobce_coi_gift_lead: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=false()
     )
-    is_complaint_lead: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, server_default=false()
-    )
     is_query_lead: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=false()
     )
@@ -73,60 +70,6 @@ class ComplianceQuery(Base):
         server_default=func.now(),
         onupdate=func.now()
     )
-
-class GiftDeclarations(Base):
-    __tablename__ = "gift_declarations"
-    __table_args__ = {"schema": "compliance"}
-
-    GiftId: Mapped[str] = mapped_column(String(80), primary_key=True)
-    Status: Mapped[str]
-    Type: Mapped[str] = mapped_column(
-        String(50), nullable=False, server_default="TO_BE_GIVEN"
-    )
-    Title: Mapped[str] = mapped_column(String(500), nullable=False)
-    Description: Mapped[str] = mapped_column(String(5000), nullable=False)
-    Person: Mapped[str]
-    Organization: Mapped[str]
-    ApproxValueINR: Mapped[float]
-    PortalApprovalTaken: Mapped[str]
-    PortalNumber: Mapped[str | None]
-
-    CreatedOn: Mapped[datetime]
-    CreatedBy: Mapped[str]
-
-    OverallStatus: Mapped[str]
-    PendingAt: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    AssignedTo: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    ResponseJsonPath: Mapped[str]
-
-    ClosureDate: Mapped[datetime | None]
-    ClosedBy: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    ClosedRemarks: Mapped[str | None] = mapped_column(String(2000), nullable=True)
-    LastUpdatedOn: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-
-class Complaints(Base):
-    __tablename__ = "complaints"
-    __table_args__ = {"schema": "compliance"}
-
-    ComplaintId: Mapped[str] = mapped_column(String(80), primary_key=True)
-    ComplaintType: Mapped[str]
-    ComplaintDetails: Mapped[str] = mapped_column(String(5000), nullable=False)
-
-    CreatedOn: Mapped[datetime]
-    CreatedBy: Mapped[str]
-
-    OverallStatus: Mapped[str]
-    PendingAt: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    AssignedTo: Mapped[str | None] = mapped_column(String(255), nullable=True)
-
-    ResponseJsonPath: Mapped[str]
-
-    ClosureDate: Mapped[datetime | None]
-    ClosedBy: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    ClosedRemarks: Mapped[str | None] = mapped_column(String(2000), nullable=True)
-    LastUpdatedOn: Mapped[datetime | None]
 
 class COBCEDeclarations(Base):
     __tablename__ = "cobce_declarations"

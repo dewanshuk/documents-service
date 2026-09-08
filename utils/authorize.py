@@ -4,7 +4,6 @@ from db.db_manager import db_manager
 HELPDESK_ADMIN_FLAGS = (
     "is_master_admin",
     "is_query_lead",
-    "is_complaint_lead",
     "is_cobce_coi_gift_lead",
     "is_knowledge_hub_admin",
     "is_cheif_compliance_officer",
@@ -47,8 +46,6 @@ async def is_helpdesk_admin(user: dict) -> bool:
 
 RECORD_TYPE_LEAD_FLAG = {
     "query": "is_query_lead",
-    "gift": "is_cobce_coi_gift_lead",
-    "complaint": "is_complaint_lead",
     "cobce": "is_cobce_coi_gift_lead",
     "coi": "is_cobce_coi_gift_lead",
 }
@@ -60,16 +57,15 @@ def is_lead_for_type(user: dict, record_type: str) -> bool:
     return as_bool(user.get(flag)) if flag else False
 
 
-ALL_HELPDESK_TYPES = {"Query", "Complaint", "Gift Declaration", "Self Declaration"}
+ALL_HELPDESK_TYPES = {"Query", "Self Declaration"}
 
 # Dashboard admin scope per lead/role flag only. CCO / master admin are not
 # included — they see own records unless they also hold a matching lead flag.
 # Annual Declaration is always own-scoped in dashboard_service.
 DASHBOARD_ROLE_SECTIONS = {
-    "is_policy_hub_admin": {"Self Declaration", "Complaint", "Query"},
+    "is_policy_hub_admin": {"Self Declaration", "Query"},
     "is_query_lead": {"Query"},
-    "is_complaint_lead": {"Complaint"},
-    "is_cobce_coi_gift_lead": {"Self Declaration", "Gift Declaration"},
+    "is_cobce_coi_gift_lead": {"Self Declaration"},
 }
 
 
@@ -77,7 +73,7 @@ def get_dashboard_type_scope(user: dict) -> tuple[set[str], set[str]]:
     """Return (visible_types, admin_types) for helpdesk dashboard sections.
 
     - visible_types: always ALL_HELPDESK_TYPES so every user keeps their own
-      records across Query / Complaint / Gift / Self Declaration.
+      records across Query / Self Declaration.
     - admin_types: role-granted types where org-wide admin records are added
       on top of the user's own records; remaining types stay own-scoped.
 
@@ -118,17 +114,3 @@ async def is_active_cobce_coi_gift_lead(staff_id:str) -> bool:
         include_total=True
     )
     return result["total"] > 0
-
-async def is_active_complaint_lead(staff_id:str) -> bool:
-    result = await db_manager.list(
-        model=User,
-        filters={
-            "staff_id": staff_id,
-            "status": "active",
-            "is_complaint_lead": True,
-        },
-        limit=1,
-        include_total=True
-    )
-    return result["total"] > 0
-
